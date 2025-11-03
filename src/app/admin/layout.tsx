@@ -15,10 +15,10 @@ import { LogOut } from "lucide-react";
 import AdminSidebarItems from "./sidebar-items";
 import { useFirebase } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
 
-const ADMIN_UID = "p8I214dVO5fNkBpA0fsOaB2b6n82"; // Replace with your actual admin UID
+const ADMIN_UID = "p8I214dVO5fNkBpA0fsOaB2b6n82"; // This should be your actual admin UID
 
 export default function AdminLayout({
   children,
@@ -27,10 +27,13 @@ export default function AdminLayout({
 }) {
   const { user, isUserLoading, auth } = useFirebase();
   const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
     if (!isUserLoading) {
-      if (!user || user.uid !== ADMIN_UID) {
+      if (user && user.uid === ADMIN_UID) {
+        setIsAuthorized(true);
+      } else {
         router.replace("/admin/login");
       }
     }
@@ -43,7 +46,7 @@ export default function AdminLayout({
     }
   };
 
-  if (isUserLoading || !user || user.uid !== ADMIN_UID) {
+  if (isUserLoading || !isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p>Loading...</p>

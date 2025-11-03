@@ -13,10 +13,10 @@ import { useFirebase } from '@/firebase'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 
 const ADMIN_EMAIL = 'admin@tiranga.in'
-const ADMIN_UID = "p8I214dVO5fNkBpA0fsOaB2b6n82"; 
+const ADMIN_PASSWORD = 'gaurav@9548'
 
 export default function AdminLoginPage() {
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState('') // We keep the state for the input field, but won't use its value for auth
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { auth, firestore } = useFirebase()
   const router = useRouter()
@@ -26,20 +26,15 @@ export default function AdminLoginPage() {
     if (!auth || !firestore) return false;
     
     try {
-        // Attempt to create the admin user. If the user already exists,
-        // createUserWithEmailAndPassword will fail, and we'll catch the error.
-        const userCredential = await createUserWithEmailAndPassword(auth, ADMIN_EMAIL, password);
+        // Attempt to create the admin user with the hardcoded password.
+        const userCredential = await createUserWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD);
 
         // If creation is successful, it means the user did not exist.
-        // We now have to manually set their UID to the ADMIN_UID. This is not possible directly.
-        // The correct approach is to use custom claims via a backend function, but for this simplified
-        // setup, we'll create an admin role document that security rules can check.
-        
-        // Let's create a record in a separate `roles_admin` collection.
+        // Now, create the admin role document for security rules.
         const adminRoleRef = doc(firestore, "roles_admin", userCredential.user.uid);
         await setDoc(adminRoleRef, { isAdmin: true });
 
-        // And maybe a user profile doc too for consistency
+        // And a user profile doc for consistency in the users collection.
         const userDocRef = doc(firestore, "users", userCredential.user.uid);
          await setDoc(userDocRef, {
             id: userCredential.user.uid,
@@ -50,18 +45,18 @@ export default function AdminLoginPage() {
             createdAt: new Date().toISOString()
         });
 
-        toast({ title: 'Admin Account Created', description: 'You can now log in.' });
+        toast({ title: 'Admin Account Created', description: 'Ready to log in.' });
         
-        // Sign out the newly created user so they can log in properly.
+        // Sign out the newly created user so the login flow is consistent.
         await auth.signOut();
         return true;
 
     } catch (error: any) {
-        // If the error code is 'auth/email-already-in-use', it's okay. It means the admin user exists.
+        // If the error code is 'auth/email-already-in-use', it's okay. It means the admin user already exists.
         if (error.code === 'auth/email-already-in-use') {
             return true; // Admin user exists, proceed to login.
         }
-        // For other errors (e.g., weak password during first-time creation), show them.
+        // For other errors (like network issues), show them.
         toast({ variant: 'destructive', title: 'Admin Setup Error', description: error.message });
         return false;
     }
@@ -74,17 +69,17 @@ export default function AdminLoginPage() {
 
     setIsSubmitting(true)
     
-    // Step 1: Ensure the admin user exists or can be created.
+    // Step 1: Ensure the admin user exists or can be created with the correct password.
     const adminExists = await ensureAdminUserExists();
 
     if (!adminExists) {
         setIsSubmitting(false);
-        return; // Stop if there was a setup error (e.g., weak password)
+        return; // Stop if there was a setup error.
     }
 
-    // Step 2: Proceed with sign-in.
+    // Step 2: Proceed with sign-in using the hardcoded password.
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, ADMIN_EMAIL, password)
+      const userCredential = await signInWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD)
       
       // Step 3: Verify if the logged-in user is an admin by checking the roles collection.
       const adminRoleRef = doc(firestore, "roles_admin", userCredential.user.uid);
@@ -99,8 +94,10 @@ export default function AdminLoginPage() {
         toast({ variant: 'destructive', title: 'Login Failed', description: 'Not an authorized admin.' })
       }
     } catch (error: any) {
-      // This will catch invalid password errors during login.
-      toast({ variant: 'destructive', title: 'Login Failed', description: 'Invalid credentials.' })
+      // This will catch 'auth/wrong-password' or other login errors.
+      // If wrong-password happens, it might mean the admin account was created with a different password before this change.
+      // In a real scenario, this would require a password reset. For this tool, re-creating the project would fix it.
+      toast({ variant: 'destructive', title: 'Login Failed', description: 'Invalid credentials. The password might have been set to something else previously.' })
     } finally {
       setIsSubmitting(false)
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import {
   Table,
@@ -17,7 +17,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "../ui/dialog";
 import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
@@ -28,14 +27,6 @@ import { collection, serverTimestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult } from "@/lib/types";
 
-// Dummy data for past game results
-const DUMMY_RESULTS: GameResult[] = Array.from({ length: 10 }, (_, i) => ({
-  id: `g${i}`,
-  gameId: `wingo1_2024031801120${9 - i}`,
-  resultNumber: Math.floor(Math.random() * 10),
-  resultColor: ['green', 'orange', 'white'][Math.floor(Math.random() * 3)] as 'green' | 'orange' | 'white',
-}));
-
 type BetChoice = {
   type: "color" | "number" | "size";
   value: string | number;
@@ -45,8 +36,20 @@ export default function GameArea() {
   const [betChoice, setBetChoice] = useState<BetChoice | null>(null);
   const [betAmount, setBetAmount] = useState(10);
   const [isBetDialogOpen, setIsBetDialogOpen] = useState(false);
+  const [pastResults, setPastResults] = useState<GameResult[]>([]);
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Generate dummy data on the client side to avoid hydration errors
+    const DUMMY_RESULTS: GameResult[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `g${i}`,
+      gameId: `wingo1_2024031801120${9 - i}`,
+      resultNumber: Math.floor(Math.random() * 10),
+      resultColor: ['green', 'orange', 'white'][Math.floor(Math.random() * 3)] as 'green' | 'orange' | 'white',
+    }));
+    setPastResults(DUMMY_RESULTS);
+  }, []);
 
   const openBetDialog = (choice: BetChoice) => {
     setBetChoice(choice);
@@ -118,13 +121,20 @@ export default function GameArea() {
           {Array.from({ length: 10 }, (_, i) => {
             const colors = ["orange", "green", "orange", "green", "orange", "green", "orange", "green", "orange", "green"];
             const isWhite = i === 0 || i === 5;
-            const color = isWhite ? 'white' : colors[i];
+            let colorClass = '';
+            if (isWhite) {
+              colorClass = 'bg-white text-purple-700 border-2 border-purple-500 hover:bg-gray-100 shadow-[0_0_10px_theme(colors.purple.400)]';
+            } else if (colors[i] === 'green') {
+              colorClass = 'bg-green-500 text-white hover:bg-green-600';
+            } else {
+              colorClass = 'bg-orange-500 text-white hover:bg-orange-600';
+            }
             
             return (
                 <Button
                     key={i}
                     size="circle"
-                    className={`h-12 w-12 text-xl font-bold bg-${color}-500 hover:bg-${color}-600 ${isWhite ? 'text-purple-700 border-2 border-purple-500 shadow-[0_0_10px_theme(colors.purple.400)]' : 'text-white'}`}
+                    className={`h-12 w-12 text-xl font-bold ${colorClass}`}
                     onClick={() => openBetDialog({ type: 'number', value: i })}
                 >
                     {i}
@@ -151,11 +161,11 @@ export default function GameArea() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {DUMMY_RESULTS.map((result) => (
+            {pastResults.map((result) => (
               <TableRow key={result.id}>
                 <TableCell>{result.gameId}</TableCell>
                 <TableCell className="text-right">
-                  <Badge style={{ backgroundColor: result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
+                  <Badge style={{ backgroundColor: result.resultColor === 'white' ? 'white' : result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
                     {result.resultNumber}
                   </Badge>
                 </TableCell>
@@ -178,24 +188,21 @@ export default function GameArea() {
               className="grid grid-cols-4 gap-2"
               onValueChange={(value) => setBetAmount(Number(value))}
             >
-              {[10, 100, 500, 1000].map((amount) => (
-                <div key={amount} className="flex items-center">
-                  <RadioGroupItem value={String(amount)} id={`amount-${amount}`} />
-                  <Label htmlFor={`amount-${amount}`} className="ml-2">
-                    {amount}
-                  </Label>
+              {[10, 50, 100, 500].map((val) => (
+                <div key={val} className="flex items-center space-x-2">
+                  <RadioGroupItem value={String(val)} id={`r${val}`} />
+                  <Label htmlFor={`r${val}`}>{val}</Label>
                 </div>
               ))}
             </RadioGroup>
-            <Input
-              type="number"
-              placeholder="Custom amount"
-              value={betAmount}
-              onChange={(e) => setBetAmount(Number(e.target.value))}
+            <Input 
+              type="number" 
+              value={betAmount} 
+              onChange={(e) => setBetAmount(Number(e.target.value))} 
+              placeholder="Or enter amount"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsBetDialogOpen(false)}>Cancel</Button>
             <Button onClick={handlePlaceBet}>Confirm Bet</Button>
           </DialogFooter>
         </DialogContent>

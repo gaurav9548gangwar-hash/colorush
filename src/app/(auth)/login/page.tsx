@@ -48,8 +48,11 @@ export default function LoginPage() {
         balance: 0,
         createdAt: new Date().toISOString(),
       })
-
+      
+      // Save phone to local storage AFTER successful registration
       localStorage.setItem("tirangaUserPhone", phone)
+      setIsRegistered(true); // Switch to login view immediately
+
       toast({ title: "Registration Successful" })
       router.push("/dashboard")
     } catch (error: any) {

@@ -7,12 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Activity, Gamepad2, Users, DollarSign } from "lucide-react";
 import { useCollection } from "@/firebase/firestore/use-collection";
-import { collection } from "firebase/firestore";
-import { useFirebase, useMemoFirebase } from "@/firebase";
+import { collection, doc } from "firebase/firestore";
+import { useFirebase, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { doc, updateDoc } from "firebase/firestore";
 
 const DUMMY_DEPOSITS: DepositRequest[] = [
   { id: 'd1', userId: '1', userName: 'John Doe', amount: 500, status: 'pending', date: '2024-03-18' },
@@ -80,14 +79,14 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
     const [amount, setAmount] = useState(0);
     const { firestore } = useFirebase();
   
-    const handleBalanceUpdate = async (operation: 'add' | 'deduct') => {
+    const handleBalanceUpdate = (operation: 'add' | 'deduct') => {
       if (!firestore) return;
       const newBalance = operation === 'add' 
         ? user.balance + amount 
         : user.balance - amount;
   
       const userRef = doc(firestore, 'users', user.id);
-      await updateDoc(userRef, { balance: newBalance });
+      updateDocumentNonBlocking(userRef, { balance: newBalance });
       setOpen(false);
       setAmount(0);
     };
@@ -109,7 +108,7 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
               onChange={(e) => setAmount(Number(e.target.value))}
             />
           </div>
-          <DialogFooter className="space-x-2">
+          <DialogFooter className="flex-row justify-end space-x-2">
             <Button onClick={() => handleBalanceUpdate('add')}>Add Balance</Button>
             <Button variant="destructive" onClick={() => handleBalanceUpdate('deduct')}>Deduct Balance</Button>
           </DialogFooter>

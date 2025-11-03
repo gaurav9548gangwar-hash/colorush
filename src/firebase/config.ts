@@ -1,10 +1,8 @@
-// The configuration object for the Firebase app.
-// This is a public configuration and can be securely used on the client-side.
 export const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  "projectId": "studio-69628998-4178c",
+  "appId": "1:396028833480:web:7ab397d96442f93e0b7ffd",
+  "apiKey": "AIzaSyCm515Xl6KqmNi-fTNO8INKmQicCd-ski8",
+  "authDomain": "studio-69628998-4178c.firebaseapp.com",
+  "measurementId": "",
+  "messagingSenderId": "396028833480"
 };

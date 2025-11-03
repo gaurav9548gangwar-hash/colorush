@@ -45,8 +45,7 @@ export default function AdminLayout({
     }
   };
 
-  // While loading or if the user is not the admin (and redirection is in progress), show a loading indicator.
-  // This prevents the admin content from flashing briefly for unauthorized users.
+  // While loading or if redirection is in progress, show a loading indicator.
   if (isUserLoading || !user || user.uid !== ADMIN_UID) {
     return (
       <div className="flex items-center justify-center min-h-screen">

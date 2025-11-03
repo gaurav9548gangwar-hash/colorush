@@ -22,85 +22,59 @@ export default function AdminLoginPage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  const ensureAdminUserExistsAndLogin = async () => {
-    if (!auth || !firestore) return false;
-    
-    try {
-      // First, try to sign in. This will work if the user already exists.
-      const userCredential = await signInWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD);
-      return userCredential.user;
-    } catch (error: any) {
-      // If sign-in fails because the user doesn't exist, create the user.
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-        try {
-          const newUserCredential = await createUserWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD);
-          const adminUser = newUserCredential.user;
-
-          // Set the admin role
-          const adminRoleRef = doc(firestore, "roles_admin", adminUser.uid);
-          await setDoc(adminRoleRef, { isAdmin: true });
-
-          // Create the user profile document
-          const userDocRef = doc(firestore, "users", adminUser.uid);
-          await setDoc(userDocRef, {
-              id: adminUser.uid,
-              name: 'Admin',
-              emailId: ADMIN_EMAIL,
-              phone: 'N/A',
-              balance: 0,
-              createdAt: new Date().toISOString()
-          });
-          
-          toast({ title: 'Admin Account Created', description: 'Your admin account is ready.' });
-          // The user is already signed in after creation, so just return the user object
-          return adminUser;
-        } catch (creationError: any) {
-          // Handle specific creation errors, like "email-already-in-use" which shouldn't happen here but as a fallback.
-          toast({ variant: 'destructive', title: 'Admin Setup Failed', description: creationError.message });
-          return null;
-        }
-      } else {
-        // For any other sign-in error, show it.
-        toast({ variant: 'destructive', title: 'Login Failed', description: error.message });
-        return null;
-      }
-    }
-  }
-
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!auth || !firestore) return
 
-    // Simple check to ensure the entered password matches the hardcoded one.
-    if(password !== ADMIN_PASSWORD) {
-        toast({ variant: 'destructive', title: 'Login Failed', description: 'Invalid Password.' })
-        return;
+    // Step 1: Simple, local password check.
+    if (password !== ADMIN_PASSWORD) {
+      toast({ variant: 'destructive', title: 'Login Failed', description: 'Invalid Password.' })
+      return
     }
 
     setIsSubmitting(true)
     
-    const adminUser = await ensureAdminUserExistsAndLogin();
-    
-    if (adminUser) {
-      // Final check to ensure the user has the admin role doc
-      const adminRoleRef = doc(firestore, "roles_admin", adminUser.uid);
-      const adminRoleSnap = await getDoc(adminRoleRef);
+    try {
+      // Step 2: Try to sign in with the correct credentials.
+      const userCredential = await signInWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD)
+      toast({ title: 'Admin Login Successful' })
+      router.push('/admin')
 
-      if (adminRoleSnap.exists()) {
-        toast({ title: 'Admin Login Successful' })
-        router.push('/admin')
+    } catch (error: any) {
+      // Step 3: If sign-in fails because user does not exist, create the user.
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+        try {
+          const newUserCredential = await createUserWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD)
+          const adminUser = newUserCredential.user
+
+          // Set the admin role
+          const adminRoleRef = doc(firestore, "roles_admin", adminUser.uid)
+          await setDoc(adminRoleRef, { isAdmin: true })
+
+          // Create the user profile document (optional but good practice)
+          const userDocRef = doc(firestore, "users", adminUser.uid)
+          await setDoc(userDocRef, {
+            id: adminUser.uid,
+            name: 'Admin',
+            emailId: ADMIN_EMAIL,
+            phone: 'N/A',
+            balance: 0,
+            createdAt: new Date().toISOString()
+          }, { merge: true })
+          
+          toast({ title: 'Admin Account Created & Logged In' })
+          router.push('/admin') // Redirect after successful creation and login
+
+        } catch (creationError: any) {
+          toast({ variant: 'destructive', title: 'Admin Creation Failed', description: creationError.message })
+        }
       } else {
-        // This case can happen if the admin user exists in auth but not in firestore roles
-        // Let's create the role doc just in case
-        await setDoc(adminRoleRef, { isAdmin: true });
-        toast({ title: 'Admin Login Successful' })
-        router.push('/admin')
+        // Handle other sign-in errors (e.g., network issues)
+        toast({ variant: 'destructive', title: 'Login Failed', description: error.message })
       }
+    } finally {
+      setIsSubmitting(false)
     }
-    // If adminUser is null, a toast with the error has already been shown.
-    
-    setIsSubmitting(false)
   }
 
   return (

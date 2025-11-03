@@ -2,27 +2,28 @@
 'use client'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Deposit, GameResult, User, Withdrawal } from "@/lib/types";
+import type { Deposit, User, Withdrawal } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Activity, Gamepad2, Users, DollarSign } from "lucide-react";
 import { useCollection } from "@/firebase/firestore/use-collection";
 import { collection, collectionGroup, doc, getDoc, runTransaction } from "firebase/firestore";
-import { useFirebase, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
+import { useFirebase, useMemoFirebase } from "@/firebase";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-
-const DUMMY_RESULTS: GameResult[] = Array.from({ length: 10 }, (_, i) => ({
-  id: `g${i}`,
-  gameId: `wingo1_2024031801120${9 - i}`,
-  resultNumber: Math.floor(Math.random() * 10),
-  resultColor: ['green', 'orange', 'white'][Math.floor(Math.random() * 3)] as 'green' | 'orange' | 'white',
-}));
-
+import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 export function DashboardTab() {
+  const { firestore } = useFirebase();
+  const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const { data: users } = useCollection<User>(usersRef);
+  const { data: withdrawals } = useRequests<Withdrawal>('withdrawals');
+  
+  const pendingWithdrawals = withdrawals.filter(w => w.status === 'pending');
+  const totalRevenue = users?.reduce((acc, user) => acc + (user.balance || 0), 0) || 0;
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card>
@@ -31,8 +32,8 @@ export function DashboardTab() {
           <Users className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">1,234</div>
-          <p className="text-xs text-muted-foreground">+50 since last week</p>
+          <div className="text-2xl font-bold">{users?.length || 0}</div>
+          <p className="text-xs text-muted-foreground">Real-time user count</p>
         </CardContent>
       </Card>
       <Card>
@@ -41,8 +42,8 @@ export function DashboardTab() {
           <DollarSign className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">₹45,231.89</div>
-          <p className="text-xs text-muted-foreground">+20.1% from last month</p>
+          <div className="text-2xl font-bold">₹{totalRevenue.toFixed(2)}</div>
+          <p className="text-xs text-muted-foreground">Total balance in all wallets</p>
         </CardContent>
       </Card>
       <Card>
@@ -61,8 +62,8 @@ export function DashboardTab() {
           <Activity className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">5</div>
-          <p className="text-xs text-muted-foreground">₹8,500 total</p>
+          <div className="text-2xl font-bold">{pendingWithdrawals.length}</div>
+          <p className="text-xs text-muted-foreground">₹{pendingWithdrawals.reduce((acc, w) => acc + w.amount, 0).toFixed(2)} total</p>
         </CardContent>
       </Card>
     </div>
@@ -77,12 +78,19 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
     const handleBalanceUpdate = (operation: 'add' | 'deduct') => {
       if (!firestore || !user) return;
       
+      const currentBalance = Number(user.balance) || 0;
+      const amountToChange = Number(amount);
+
+      if (isNaN(currentBalance) || isNaN(amountToChange)) {
+          console.error("Invalid balance or amount");
+          return;
+      }
+
       const newBalance = operation === 'add' 
-        ? (user.balance || 0) + amount 
-        : (user.balance || 0) - amount;
+        ? currentBalance + amountToChange
+        : currentBalance - amountToChange;
   
       const userRef = doc(firestore, 'users', user.id);
-      // Use the non-blocking update function
       updateDocumentNonBlocking(userRef, { balance: newBalance });
       setOpen(false);
       setAmount(0);
@@ -96,7 +104,7 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
             <DialogTitle>Edit Balance for {user.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p>Current Balance: ₹{(user.balance || 0).toFixed(2)}</p>
+            <p>Current Balance: ₹{(Number(user.balance) || 0).toFixed(2)}</p>
             <Label htmlFor="amount">Amount</Label>
             <Input 
               id="amount" 
@@ -148,7 +156,7 @@ export function UsersTab() {
                   <div className="text-sm text-muted-foreground">{user.phone}</div>
                 </TableCell>
                 <TableCell>{user.emailId}</TableCell>
-                <TableCell>₹{(user.balance || 0).toFixed(2)}</TableCell>
+                <TableCell>₹{(Number(user.balance) || 0).toFixed(2)}</TableCell>
                 <TableCell>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                 <TableCell className="space-x-2">
                     <BalanceDialog user={user}>
@@ -167,7 +175,7 @@ export function UsersTab() {
 const useRequests = <T extends Deposit | Withdrawal>(requestType: 'deposits' | 'withdrawals') => {
     const { firestore } = useFirebase();
     const requestsQuery = useMemoFirebase(() => firestore ? collectionGroup(firestore, requestType) : null, [firestore, requestType]);
-    const { data: requests, isLoading } = useCollection<(Omit<T, 'id'> & { id: string; path: string })>(requestsQuery);
+    const { data: requests, isLoading } = useCollection<(T & { id: string; path: string })>(requestsQuery);
 
     const [requestsWithUsers, setRequestsWithUsers] = useState<(T & { user?: User; path: string })[]>([]);
     
@@ -197,7 +205,7 @@ export function DepositsTab() {
     const { data: deposits, isLoading } = useRequests<Deposit>('deposits');
     const { firestore } = useFirebase();
   
-    const handleRequest = async (deposit: Deposit & {path: string}, newStatus: 'approved' | 'rejected') => {
+    const handleRequest = async (deposit: Deposit & { path: string }, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
         
         const depositRef = doc(firestore, deposit.path);
@@ -213,7 +221,9 @@ export function DepositsTab() {
 
                 // Only add to balance if approving a pending request
                 if (newStatus === 'approved' && deposit.status === 'pending') {
-                    const newBalance = (userDoc.data().balance || 0) + deposit.amount;
+                    const currentBalance = Number(userDoc.data().balance) || 0;
+                    const depositAmount = Number(deposit.amount);
+                    const newBalance = currentBalance + depositAmount;
                     transaction.update(userRef, { balance: newBalance });
                 }
                 
@@ -244,7 +254,7 @@ export function DepositsTab() {
             {deposits.map((deposit) => (
               <TableRow key={deposit.id}>
                 <TableCell>{deposit.user?.name || deposit.userId}</TableCell>
-                <TableCell>₹{deposit.amount.toFixed(2)}</TableCell>
+                <TableCell>₹{Number(deposit.amount).toFixed(2)}</TableCell>
                 <TableCell>{new Date(deposit.requestedAt).toLocaleString()}</TableCell>
                 <TableCell><Badge variant={deposit.status === 'pending' ? 'secondary' : deposit.status === 'approved' ? 'default' : 'destructive'}>{deposit.status}</Badge></TableCell>
                 <TableCell className="space-x-2">
@@ -268,7 +278,7 @@ export function WithdrawalsTab() {
     const { data: withdrawals, isLoading } = useRequests<Withdrawal>('withdrawals');
     const { firestore } = useFirebase();
 
-    const handleRequest = async (withdrawal: Withdrawal & {path: string}, newStatus: 'approved' | 'rejected') => {
+    const handleRequest = async (withdrawal: Withdrawal & { path: string }, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
         
         const withdrawalRef = doc(firestore, withdrawal.path);
@@ -277,24 +287,23 @@ export function WithdrawalsTab() {
             await runTransaction(firestore, async (transaction) => {
                 const userRef = doc(firestore, "users", withdrawal.userId);
                 
-                // Only touch balance if the new status is 'approved'
                 if (newStatus === 'approved' && withdrawal.status === 'pending') {
                     const userDoc = await transaction.get(userRef);
+                    const currentBalance = Number(userDoc.data()?.balance) || 0;
+                    const withdrawalAmount = Number(withdrawal.amount);
 
-                    if (!userDoc.exists() || userDoc.data().balance < withdrawal.amount) {
+                    if (!userDoc.exists() || currentBalance < withdrawalAmount) {
                         throw "Insufficient balance or user not found!";
                     }
                     
-                    const newBalance = userDoc.data().balance - withdrawal.amount;
+                    const newBalance = currentBalance - withdrawalAmount;
                     transaction.update(userRef, { balance: newBalance });
                 }
                 
-                // For rejections, just update the status, no balance change.
                 transaction.update(withdrawalRef, { status: newStatus });
             });
         } catch (e) {
             console.error("Transaction failed: ", e);
-            // Optionally, show a toast to the admin
         }
     };
   
@@ -319,7 +328,7 @@ export function WithdrawalsTab() {
               {withdrawals.map((w) => (
                 <TableRow key={w.id}>
                   <TableCell>{w.user?.name || w.userId}</TableCell>
-                  <TableCell>₹{w.amount.toFixed(2)}</TableCell>
+                  <TableCell>₹{Number(w.amount).toFixed(2)}</TableCell>
                   <TableCell>{w.upiBank}</TableCell>
                   <TableCell>{new Date(w.requestedAt).toLocaleString()}</TableCell>
                   <TableCell><Badge variant={w.status === 'pending' ? 'secondary' : w.status === 'approved' ? 'default' : 'destructive'}>{w.status}</Badge></TableCell>
@@ -341,12 +350,28 @@ export function WithdrawalsTab() {
 }
 
 export function GameControlTab() {
+    const [resultNumber, setResultNumber] = useState('');
+    
+    // In a real app, you would fetch actual game rounds
+    const DUMMY_RESULTS = Array.from({ length: 10 }, (_, i) => ({
+      id: `g${i}`,
+      gameId: `wingo1_2024031801120${9 - i}`,
+      resultNumber: Math.floor(Math.random() * 10),
+      resultColor: ['green', 'orange', 'white'][Math.floor(Math.random() * 3)] as 'green' | 'orange' | 'white',
+    }));
+
     return (
         <div className="grid gap-6 lg:grid-cols-2">
             <Card>
                 <CardHeader><CardTitle>Manual Result</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                    <Input placeholder="Enter number 0-9" type="number" min="0" max="9" />
+                    <Input 
+                        placeholder="Enter number 0-9" 
+                        type="number" 
+                        min="0" max="9" 
+                        value={resultNumber}
+                        onChange={(e) => setResultNumber(e.target.value)}
+                    />
                     <Button>Trigger Result</Button>
                 </CardContent>
             </Card>

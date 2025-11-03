@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 import {
   SidebarProvider,
@@ -11,7 +12,8 @@ import {
   SidebarInset,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Home, Users, Wallet, Gamepad2, LogOut, Settings } from "lucide-react";
+import { Home, Users, Wallet, Gamepad2, LogOut, Settings, CreditCard, ArrowLeftRight } from "lucide-react";
+import AdminSidebarItems from "./sidebar-items";
 
 export default function AdminLayout({
   children,
@@ -32,41 +34,10 @@ export default function AdminLayout({
           </div>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton href="/admin" isActive>
-                <Home />
-                Dashboard
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton href="/admin">
-                <Users />
-                Users
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton href="/admin">
-                <Wallet />
-                Transactions
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton href="/admin">
-                <Gamepad2 />
-                Game Control
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+            <AdminSidebarItems />
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton href="#">
-                <Settings />
-                Settings
-              </SidebarMenuButton>
-            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton href="/login">
                 <LogOut />

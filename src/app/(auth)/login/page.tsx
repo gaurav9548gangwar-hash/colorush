@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { RecaptchaVerifier, signInWithPhoneNumber, type Auth } from "firebase/auth"
+import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth"
 import { useFirebase } from "@/firebase"
 
 declare global {
   interface Window {
     recaptchaVerifier?: RecaptchaVerifier
-    confirmationResult: any
+    confirmationResult?: ConfirmationResult
   }
 }
 
@@ -26,24 +26,30 @@ export default function LoginPage() {
   const { auth } = useFirebase()
   const { toast } = useToast()
 
+  useEffect(() => {
+    if (!auth || window.recaptchaVerifier) return;
+
+    try {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+        size: "invisible",
+        callback: (response: any) => {
+          // reCAPTCHA solved.
+        },
+      });
+    } catch (error) {
+      console.error("Error initializing RecaptchaVerifier:", error);
+    }
+  }, [auth]);
+
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!auth) return
+    if (!auth || !window.recaptchaVerifier) return
     setIsSubmitting(true)
 
     try {
       const formattedPhoneNumber = `+${phoneNumber.replace(/\D/g, '')}`
       
-      const appVerifier = window.recaptchaVerifier ?? new RecaptchaVerifier(auth, "recaptcha-container", {
-        size: "invisible",
-        callback: (response: any) => {
-          // reCAPTCHA solved, allow signInWithPhoneNumber.
-        },
-      });
-      
-      window.recaptchaVerifier = appVerifier;
-
-      const confirmationResult = await signInWithPhoneNumber(auth, formattedPhoneNumber, appVerifier)
+      const confirmationResult = await signInWithPhoneNumber(auth, formattedPhoneNumber, window.recaptchaVerifier)
       window.confirmationResult = confirmationResult
       toast({
         title: "OTP Sent",
@@ -58,9 +64,14 @@ export default function LoginPage() {
         title: "Failed to send OTP",
         description: error.message || "Please try again.",
       })
-      // Reset reCAPTCHA if it exists
-      window.recaptchaVerifier?.clear();
-
+      // It's important to handle reCAPTCHA reset, especially on error
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.render().then((widgetId) => {
+          if (typeof grecaptcha !== 'undefined' && grecaptcha.reset) {
+            grecaptcha.reset(widgetId);
+          }
+        });
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -68,6 +79,15 @@ export default function LoginPage() {
 
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!window.confirmationResult) {
+       toast({
+        variant: "destructive",
+        title: "Verification Failed",
+        description: "Could not verify OTP. Please try sending the OTP again.",
+      })
+      setStep('phone');
+      return;
+    }
     setIsSubmitting(true)
     try {
       await window.confirmationResult.confirm(otp)

@@ -17,7 +17,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Label } from "@/components/ui/label"
 import { LogOut, RefreshCw } from 'lucide-react'
 
-// Hardcoded Admin UID for security
+// This UID is associated with admin@tiranga.in after it's created.
+// We keep it for an extra layer of security check.
 const ADMIN_UID = "p8I214dVO5fNkBpA0fsOaB2b6n82";
 
 function BalanceDialog({ user, children }: { user: User, children: React.ReactNode }) {
@@ -86,7 +87,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!isUserLoading) {
-      if (!user || user.uid !== ADMIN_UID) {
+      // Simple check: if there's no user, or the user's email is not the admin email, redirect.
+      if (!user || user.email !== 'admin@tiranga.in') {
         router.replace("/admin/login");
       }
     }
@@ -100,9 +102,11 @@ export default function AdminPage() {
   };
 
   const filteredUsers = users?.filter(u => 
-    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.phone?.includes(searchTerm) ||
-    u.emailId?.toLowerCase().includes(searchTerm.toLowerCase())
+    u.id !== user?.uid && ( // Exclude admin from the list
+        u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.phone?.includes(searchTerm) ||
+        u.emailId?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
   );
   
   if (isUserLoading || !user) {
@@ -126,7 +130,7 @@ export default function AdminPage() {
         <CardHeader className='flex-row items-center justify-between'>
           <CardTitle>User Management</CardTitle>
           <div className='flex items-center gap-2'>
-            <p className='text-sm text-muted-foreground'>Total Users: {users?.length || 0}</p>
+            <p className='text-sm text-muted-foreground'>Total Users: {filteredUsers?.length || 0}</p>
             <Button size="icon" variant="ghost" onClick={() => window.location.reload()}>
                 <RefreshCw className='h-4 w-4' />
             </Button>

@@ -46,6 +46,7 @@ export default function AdminLayout({
   };
 
   // While loading or if redirection is in progress, show a loading indicator.
+  // This is the gatekeeper.
   if (isUserLoading || !user || user.uid !== ADMIN_UID) {
     return (
       <div className="flex items-center justify-center min-h-screen">

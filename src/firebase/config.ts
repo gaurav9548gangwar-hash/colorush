@@ -1,7 +1,3 @@
-// Follow this pattern to import other Firebase services
-// import { getAuth } from 'firebase/auth';
-// import { getFirestore } from 'firebase/firestore';
-
 // The configuration object for the Firebase app.
 // This is a public configuration and can be securely used on the client-side.
 export const firebaseConfig = {

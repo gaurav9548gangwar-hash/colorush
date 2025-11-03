@@ -163,28 +163,36 @@ export function UsersTab() {
 
 const useRequests = <T extends Deposit | Withdrawal>(requestType: 'deposits' | 'withdrawals') => {
     const { firestore } = useFirebase();
-    const requestsRef = useMemoFirebase(() => firestore ? collectionGroup(firestore, requestType) : null, [firestore, requestType]);
-    const { data: requests, isLoading } = useCollection<Omit<T, 'id'>>(requestsRef);
+    const requestsQuery = useMemoFirebase(() => firestore ? collectionGroup(firestore, requestType) : null, [firestore, requestType]);
+    const { data: requests, isLoading } = useCollection<(Omit<T, 'id'> & { id: string })>(requestsQuery);
+
     const [requestsWithUsers, setRequestsWithUsers] = useState<(T & { user?: User })[]>([]);
-  
+    
     useEffect(() => {
-      const fetchUsers = async () => {
-        if (requests && firestore) {
-          const enrichedRequests = await Promise.all(
-            requests.map(async (req) => {
-              const userRef = doc(firestore, 'users', req.userId);
-              const userSnap = await getDoc(userRef);
-              return { ...req, user: userSnap.exists() ? (userSnap.data() as User) : undefined };
-            })
-          );
-          setRequestsWithUsers(enrichedRequests);
-        }
-      };
-      fetchUsers();
+        const fetchUsers = async () => {
+            if (requests && firestore) {
+                const enrichedRequests = await Promise.all(
+                    requests.map(async (req) => {
+                        const userRef = doc(firestore, 'users', req.userId);
+                        const userSnap = await getDoc(userRef);
+                        const requestDoc = (req as any);
+                        const requestId = requestDoc.id; // The ID is now on the object
+                        
+                        return { 
+                            ...req,
+                            id: requestId, 
+                            user: userSnap.exists() ? (userSnap.data() as User) : undefined 
+                        } as (T & { user?: User });
+                    })
+                );
+                setRequestsWithUsers(enrichedRequests);
+            }
+        };
+        fetchUsers();
     }, [requests, firestore]);
-  
+
     return { data: requestsWithUsers, isLoading };
-  };
+};
 
 export function DepositsTab() {
     const { data: deposits, isLoading } = useRequests<Deposit>('deposits');
@@ -204,7 +212,8 @@ export function DepositsTab() {
                     throw "User not found!";
                 }
 
-                if (newStatus === 'approved') {
+                // Only add to balance if approving a pending request
+                if (newStatus === 'approved' && deposit.status === 'pending') {
                     const newBalance = (userDoc.data().balance || 0) + deposit.amount;
                     transaction.update(userRef, { balance: newBalance });
                 }
@@ -220,7 +229,7 @@ export function DepositsTab() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Pending Deposit Requests</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Deposit Requests</CardTitle></CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
@@ -233,15 +242,19 @@ export function DepositsTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {deposits.filter(d => d.status === 'pending').map((deposit) => (
+            {deposits.map((deposit) => (
               <TableRow key={deposit.id}>
                 <TableCell>{deposit.user?.name || deposit.userId}</TableCell>
                 <TableCell>₹{deposit.amount.toFixed(2)}</TableCell>
                 <TableCell>{new Date(deposit.requestedAt).toLocaleString()}</TableCell>
-                <TableCell><Badge variant="secondary">{deposit.status}</Badge></TableCell>
+                <TableCell><Badge variant={deposit.status === 'pending' ? 'secondary' : deposit.status === 'approved' ? 'default' : 'destructive'}>{deposit.status}</Badge></TableCell>
                 <TableCell className="space-x-2">
-                  <Button size="sm" variant="default" onClick={() => handleRequest(deposit, 'approved')}>Approve</Button>
-                  <Button size="sm" variant="destructive" onClick={() => handleRequest(deposit, 'rejected')}>Reject</Button>
+                 {deposit.status === 'pending' && (
+                    <>
+                        <Button size="sm" variant="default" onClick={() => handleRequest(deposit, 'approved')}>Approve</Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleRequest(deposit, 'rejected')}>Reject</Button>
+                    </>
+                 )}
                 </TableCell>
               </TableRow>
             ))}
@@ -263,8 +276,10 @@ export function WithdrawalsTab() {
 
         try {
             await runTransaction(firestore, async (transaction) => {
-                if (newStatus === 'approved') {
-                    const userRef = doc(firestore, "users", withdrawal.userId);
+                const userRef = doc(firestore, "users", withdrawal.userId);
+                
+                // Only touch balance if the new status is 'approved'
+                if (newStatus === 'approved' && withdrawal.status === 'pending') {
                     const userDoc = await transaction.get(userRef);
 
                     if (!userDoc.exists() || userDoc.data().balance < withdrawal.amount) {
@@ -275,6 +290,7 @@ export function WithdrawalsTab() {
                     transaction.update(userRef, { balance: newBalance });
                 }
                 
+                // For rejections, just update the status, no balance change.
                 transaction.update(withdrawalRef, { status: newStatus });
             });
         } catch (e) {
@@ -287,7 +303,7 @@ export function WithdrawalsTab() {
 
     return (
       <Card>
-        <CardHeader><CardTitle>Pending Withdrawal Requests</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Withdrawal Requests</CardTitle></CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
@@ -301,16 +317,20 @@ export function WithdrawalsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {withdrawals.filter(w => w.status === 'pending').map((w) => (
+              {withdrawals.map((w) => (
                 <TableRow key={w.id}>
                   <TableCell>{w.user?.name || w.userId}</TableCell>
                   <TableCell>₹{w.amount.toFixed(2)}</TableCell>
                   <TableCell>{w.upiBank}</TableCell>
                   <TableCell>{new Date(w.requestedAt).toLocaleString()}</TableCell>
-                  <TableCell><Badge variant="secondary">{w.status}</Badge></TableCell>
+                  <TableCell><Badge variant={w.status === 'pending' ? 'secondary' : w.status === 'approved' ? 'default' : 'destructive'}>{w.status}</Badge></TableCell>
                   <TableCell className="space-x-2">
-                    <Button size="sm" onClick={() => handleRequest(w, 'approved')}>Approve</Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleRequest(w, 'rejected')}>Reject</Button>
+                     {w.status === 'pending' && (
+                        <>
+                           <Button size="sm" onClick={() => handleRequest(w, 'approved')}>Approve</Button>
+                           <Button size="sm" variant="destructive" onClick={() => handleRequest(w, 'rejected')}>Reject</Button>
+                        </>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

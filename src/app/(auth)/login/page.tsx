@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { RecaptchaVerifier, signInWithPhoneNumber, type Auth } from "firebase/auth"
-import { useAuth } from "@/firebase"
+import { useFirebase } from "@/firebase"
 
 declare global {
   interface Window {
@@ -23,7 +23,7 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
-  const auth = useAuth()
+  const { auth } = useFirebase()
   const { toast } = useToast()
 
   useEffect(() => {

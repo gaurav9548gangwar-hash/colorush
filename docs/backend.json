@@ -4,23 +4,24 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "Represents a user of the Tiranga game.",
+      "description": "Represents a user of the Tiranga Wingo game.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the user entity."
+          "description": "Unique identifier for the user."
         },
         "phone": {
           "type": "string",
-          "description": "User's phone number."
+          "description": "User's phone number for authentication."
         },
         "emailId": {
           "type": "string",
-          "description": "Unique, email-like user ID (e.g., user123@tiranga.in)."
+          "description": "Unique email-like ID generated for the user (e.g., user123@tiranga.in)."
         },
         "balance": {
           "type": "number",
-          "description": "User's wallet balance."
+          "description": "User's wallet balance.",
+          "format": "number"
         },
         "name": {
           "type": "string",
@@ -28,7 +29,7 @@
         },
         "createdAt": {
           "type": "string",
-          "description": "Timestamp of when the user was created.",
+          "description": "Timestamp indicating when the user account was created.",
           "format": "date-time"
         }
       },
@@ -48,24 +49,24 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the game round entity."
+          "description": "Unique identifier for the game round."
         },
         "gameType": {
           "type": "string",
-          "description": "Type of game (e.g., wingo1, wingo3)."
+          "description": "Type of the game (e.g., wingo1, wingo3)."
         },
         "startTime": {
           "type": "string",
-          "description": "Timestamp of when the game round started.",
+          "description": "Timestamp indicating when the game round started.",
           "format": "date-time"
         },
         "resultNumber": {
           "type": "number",
-          "description": "Resulting number of the game round (0-9)."
+          "description": "The winning number for the game round (0-9)."
         },
         "resultColor": {
           "type": "string",
-          "description": "Resulting color of the game round (green, orange, white)."
+          "description": "The winning color for the game round (green, orange, white)."
         },
         "status": {
           "type": "string",
@@ -89,7 +90,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the bet entity."
+          "description": "Unique identifier for the bet."
         },
         "userId": {
           "type": "string",
@@ -101,23 +102,26 @@
         },
         "choice": {
           "type": "string",
-          "description": "User's bet choice (e.g., color:green, number:5, big)."
+          "description": "The user's bet choice (e.g., color:green, number:5, big)."
         },
         "amount": {
           "type": "number",
-          "description": "Amount of the bet."
+          "description": "The amount the user bet.",
+          "format": "number"
         },
         "multiplier": {
           "type": "number",
-          "description": "Multiplier applied to the bet."
+          "description": "The multiplier applied to the bet.",
+          "format": "number"
         },
         "won": {
           "type": "boolean",
-          "description": "Indicates whether the bet was won or lost."
+          "description": "Indicates whether the user won the bet."
         },
         "payout": {
           "type": "number",
-          "description": "Amount paid out for the bet."
+          "description": "The amount the user won (if any).",
+          "format": "number"
         }
       },
       "required": [
@@ -135,11 +139,11 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Deposit",
       "type": "object",
-      "description": "Represents a user's deposit request.",
+      "description": "Represents a deposit request made by a user.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the deposit entity."
+          "description": "Unique identifier for the deposit request."
         },
         "userId": {
           "type": "string",
@@ -147,7 +151,8 @@
         },
         "amount": {
           "type": "number",
-          "description": "Amount of the deposit request."
+          "description": "The amount the user wants to deposit.",
+          "format": "number"
         },
         "status": {
           "type": "string",
@@ -155,11 +160,12 @@
         },
         "screenshotUrl": {
           "type": "string",
-          "description": "URL of the deposit screenshot."
+          "description": "URL of the screenshot provided by the user as proof of deposit.",
+          "format": "uri"
         },
         "requestedAt": {
           "type": "string",
-          "description": "Timestamp of when the deposit was requested.",
+          "description": "Timestamp indicating when the deposit request was made.",
           "format": "date-time"
         }
       },
@@ -176,11 +182,11 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Withdrawal",
       "type": "object",
-      "description": "Represents a user's withdrawal request.",
+      "description": "Represents a withdrawal request made by a user.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the withdrawal entity."
+          "description": "Unique identifier for the withdrawal request."
         },
         "userId": {
           "type": "string",
@@ -188,11 +194,12 @@
         },
         "amount": {
           "type": "number",
-          "description": "Amount of the withdrawal request."
+          "description": "The amount the user wants to withdraw.",
+          "format": "number"
         },
         "upiBank": {
           "type": "string",
-          "description": "UPI ID or bank details for the withdrawal."
+          "description": "User's UPI ID or bank account details for withdrawal."
         },
         "status": {
           "type": "string",
@@ -200,7 +207,7 @@
         },
         "requestedAt": {
           "type": "string",
-          "description": "Timestamp of when the withdrawal was requested.",
+          "description": "Timestamp indicating when the withdrawal request was made.",
           "format": "date-time"
         }
       },
@@ -217,8 +224,7 @@
   "auth": {
     "providers": [
       "password",
-      "anonymous",
-      "phone"
+      "anonymous"
     ]
   },
   "firestore": {
@@ -230,27 +236,27 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Stores user profiles. Uses Path-Based ownership for easy user data management. Includes the user's profile information, wallet balance, and creation timestamp.",
+          "description": "Stores user data. Only the user can read/write their document.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier for each user."
+              "description": "The unique ID of the user."
             }
           ]
         }
       },
       {
-        "path": "/game_rounds/{gameRoundId}",
+        "path": "/game_rounds/{gameId}",
         "definition": {
           "entityName": "GameRound",
           "schema": {
             "$ref": "#/backend/entities/GameRound"
           },
-          "description": "Stores information about each game round, including game type, start time, result, and status. Game rounds are globally accessible and do not require denormalized authorization fields.",
+          "description": "Stores game round data. Publicly readable, writeable by admin only.",
           "params": [
             {
-              "name": "gameRoundId",
-              "description": "The unique identifier for each game round."
+              "name": "gameId",
+              "description": "The unique ID of the game round."
             }
           ]
         }
@@ -262,15 +268,15 @@
           "schema": {
             "$ref": "#/backend/entities/Bet"
           },
-          "description": "Stores bets placed by each user. Uses Path-Based ownership for security. Includes denormalized 'userId' for authorization independence.",
+          "description": "Stores bets made by each user. Path-based ownership enforces user access.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier for each user."
+              "description": "The unique ID of the user."
             },
             {
               "name": "betId",
-              "description": "The unique identifier for each bet."
+              "description": "The unique ID of the bet."
             }
           ]
         }
@@ -282,15 +288,15 @@
           "schema": {
             "$ref": "#/backend/entities/Deposit"
           },
-          "description": "Stores deposit requests made by each user. Uses Path-Based ownership for security. Includes denormalized 'userId' for authorization independence.",
+          "description": "Stores deposit requests made by each user. Path-based ownership enforces user creation.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier for each user."
+              "description": "The unique ID of the user."
             },
             {
               "name": "depositId",
-              "description": "The unique identifier for each deposit."
+              "description": "The unique ID of the deposit."
             }
           ]
         }
@@ -302,36 +308,36 @@
           "schema": {
             "$ref": "#/backend/entities/Withdrawal"
           },
-          "description": "Stores withdrawal requests made by each user. Uses Path-Based ownership for security. Includes denormalized 'userId' for authorization independence.",
+          "description": "Stores withdrawal requests made by each user. Path-based ownership enforces user creation.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier for each user."
+              "description": "The unique ID of the user."
             },
             {
               "name": "withdrawalId",
-              "description": "The unique identifier for each withdrawal."
+              "description": "The unique ID of the withdrawal."
             }
           ]
         }
       },
       {
-        "path": "/admins/{adminId}",
+        "path": "/roles_admin/{userId}",
         "definition": {
           "entityName": "admin",
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Collection of admin user IDs for role-based access control.",
+          "description": "Uses existence over content to define admin roles. If a document exists for a user ID in this collection, that user is considered an admin.",
           "params": [
             {
-              "name": "adminId",
-              "description": "The unique identifier for each admin."
+              "name": "userId",
+              "description": "The unique ID of the user."
             }
           ]
         }
       }
     ],
-    "reasoning": "The Firestore data structure is designed to support the Tiranga color prediction game, focusing on user data, game rounds, bets, deposits, and withdrawals.  It prioritizes Authorization Independence (CRITICAL), Clarity of Intent (Debuggability), DBAC (No Custom Claims), QAPs (Rules are not Filters), and Invariants.  The key principle applied is Authorization Independence via Denormalization, to avoid hierarchical authorization dependencies (get()). Path-Based Ownership is used for user-owned data (users, bets, deposits, withdrawals) to simplify security rules. The structure facilitates secure `list` operations (QAPs) by ensuring that each collection contains documents with homogeneous security needs. For example, bets are stored under users, allowing easy listing of a user's bets, while game rounds are global and require no `get()` calls for validation of bets during write operations.\n\nSpecifically, for the 'bets' subcollection under each user, the `userId` field is redundant but maintained to enhance security rule clarity and potential filtering needs. Denormalization of 'members' is not required in this specific implementation as collaborative aspects, and global roles are managed through the admin panel using a dedicated 'admins' collection."
+    "reasoning": "The Firestore structure is designed to address the 'auth/operation-not-allowed' error, ensure security, scalability, and debuggability, and support the application's core features.  The error is likely due to Phone Authentication not being enabled in the Firebase Console.  The provided structure facilitates easy-to-write security rules and avoids hierarchical authorization dependencies by using path-based ownership and denormalization where needed.\n\n*   **/users/{userId}**:  This collection stores user data. Security rules will ensure that only the user can read/write their own document.\n*   **/game_rounds/{gameId}**: Stores the rounds of each game. Publicly readable, but write access restricted to admin.\n*   **/users/{userId}/bets/{betId}**: Stores the bets made by each user.  Path-based ownership ensures that only the user can read/write their own bets.\n*   **/users/{userId}/deposits/{depositId}**: Stores deposit requests made by each user.  Path-based ownership ensures only the user can create deposit requests.  Admin will have read/write access to approve/reject.\n*   **/users/{userId}/withdrawals/{withdrawalId}**: Stores withdrawal requests made by each user. Path-based ownership ensures only the user can create withdrawal requests.  Admin will have read/write access to approve/reject.\n*   **/roles_admin/{userId}**: Uses Existence over Content for identifying admins. If a document exists for a `userId` in this collection, that user is an admin.\n\n**Authorization Independence:**\n\nAuthorization independence is achieved using path-based ownership for `bets`, `deposits`, and `withdrawals`. This means that authorization checks do not need to `get()` data from parent documents. For example, the security rule for `/users/{userId}/bets/{betId}` can directly check if `request.auth.uid == userId` without needing to fetch the user document.\n\n**QAPs (Rules are not Filters):**\n\nThe structure is designed to avoid using rules as filters.  For example, listing bets is always done within the context of a user (`/users/{userId}/bets`).  Listing deposits and withdrawals is similar, ensuring that rules can efficiently and securely control access to the data without inefficient filtering.\n\n**Admin Role:**\nThe admin role is implemented using the \"Existence over Content\" strategy with the `/roles_admin/{userId}` collection. This means a user is an admin if and only if a document exists for their `userId` in this collection. This is efficient and secure for checking admin status in security rules."
   }
 }

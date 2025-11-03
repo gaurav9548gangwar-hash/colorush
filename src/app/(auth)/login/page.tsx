@@ -1,107 +1,66 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth"
+import { createUserWithEmailAndPassword } from "firebase/auth"
 import { useFirebase } from "@/firebase"
-
-declare global {
-  interface Window {
-    recaptchaVerifier?: RecaptchaVerifier
-    confirmationResult?: ConfirmationResult
-  }
-}
+import { doc, setDoc } from "firebase/firestore"
 
 export default function LoginPage() {
-  const [step, setStep] = useState<"phone" | "otp">("phone")
-  const [phoneNumber, setPhoneNumber] = useState("")
-  const [otp, setOtp] = useState("")
+  const [name, setName] = useState("")
+  const [phone, setPhone] = useState("")
+  const [password, setPassword] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
-  const { auth } = useFirebase()
+  const { auth, firestore } = useFirebase()
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (!auth || window.recaptchaVerifier) return;
-
-    try {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
-        size: "invisible",
-        callback: (response: any) => {
-          // reCAPTCHA solved.
-        },
-      });
-    } catch (error) {
-      console.error("Error initializing RecaptchaVerifier:", error);
-    }
-  }, [auth]);
-
-  const handlePhoneSubmit = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!auth || !window.recaptchaVerifier) return
-    setIsSubmitting(true)
-
-    try {
-      const formattedPhoneNumber = `+${phoneNumber.replace(/\D/g, '')}`
-      
-      const confirmationResult = await signInWithPhoneNumber(auth, formattedPhoneNumber, window.recaptchaVerifier)
-      window.confirmationResult = confirmationResult
-      toast({
-        title: "OTP Sent",
-        description: "We've sent an OTP to your phone number.",
-      })
-      setStep("otp")
-    } catch (error: any)
-    {
-      console.error("Error sending OTP:", error)
+    if (!auth || !firestore) {
       toast({
         variant: "destructive",
-        title: "Failed to send OTP",
-        description: error.message || "Please try again.",
+        title: "Error",
+        description: "Firebase is not configured correctly.",
       })
-      // It's important to handle reCAPTCHA reset, especially on error
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.render().then((widgetId) => {
-          if (typeof grecaptcha !== 'undefined' && grecaptcha.reset) {
-            grecaptcha.reset(widgetId);
-          }
-        });
-      }
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!window.confirmationResult) {
-       toast({
-        variant: "destructive",
-        title: "Verification Failed",
-        description: "Could not verify OTP. Please try sending the OTP again.",
-      })
-      setStep('phone');
-      return;
+      return
     }
     setIsSubmitting(true)
+
+    // Create an email-like ID from the phone number for Firebase Auth
+    const emailId = `${phone}@tiranga.in`
+
     try {
-      await window.confirmationResult.confirm(otp)
+      // Create user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
+      const user = userCredential.user
+
+      // Create user document in Firestore
+      await setDoc(doc(firestore, "users", user.uid), {
+        id: user.uid,
+        name: name,
+        phone: phone,
+        emailId: emailId,
+        balance: 0,
+        createdAt: new Date().toISOString(),
+      })
+
       toast({
-        title: "Login Successful",
-        description: "Welcome back!",
+        title: "Registration Successful",
+        description: "Your account has been created.",
       })
       router.push("/dashboard")
     } catch (error: any) {
-      console.error("Error verifying OTP:", error)
+      console.error("Error creating user:", error)
       toast({
         variant: "destructive",
-        title: "Invalid OTP",
-        description: "The OTP you entered is incorrect. Please try again.",
+        title: "Registration Failed",
+        description: error.message || "An unexpected error occurred.",
       })
     } finally {
       setIsSubmitting(false)
@@ -109,57 +68,57 @@ export default function LoginPage() {
   }
 
   return (
-    <>
-      <div id="recaptcha-container"></div>
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-primary">Tiranga</CardTitle>
-          <CardDescription>Login to your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {step === "phone" ? (
-            <form onSubmit={handlePhoneSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+91 98765 43210"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  required
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Sending OTP..." : "Send OTP"}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleOtpSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="otp">Enter OTP</Label>
-                <Input
-                  id="otp"
-                  type="text"
-                  placeholder="6-digit code"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  required
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Verifying..." : "Login"}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-        <CardFooter className="flex flex-col text-xs text-center">
-          <p>By continuing, you agree to our Terms of Service.</p>
-          <Button variant="link" size="sm" onClick={() => router.push('/admin')}>
-              Admin Login
+    <Card className="w-full max-w-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl font-bold text-primary">Tiranga</CardTitle>
+        <CardDescription>Create your account</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleRegister} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Name</Label>
+            <Input
+              id="name"
+              type="text"
+              placeholder="Your Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone Number</Label>
+            <Input
+              id="phone"
+              type="tel"
+              placeholder="9876543210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="Create a password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? "Creating Account..." : "Create Account"}
           </Button>
-        </CardFooter>
-      </Card>
-    </>
+        </form>
+      </CardContent>
+      <CardFooter className="flex flex-col text-xs text-center">
+        <p>By continuing, you agree to our Terms of Service.</p>
+        <Button variant="link" size="sm" onClick={() => router.push('/admin')}>
+            Admin Login
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }

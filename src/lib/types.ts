@@ -4,7 +4,7 @@ export type User = {
   phone: string;
   emailId: string;
   balance: number;
-  joinDate: string;
+  createdAt: string;
 };
 
 export type DepositRequest = {

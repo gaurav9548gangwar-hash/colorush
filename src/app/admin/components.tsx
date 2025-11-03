@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Activity, Gamepad2, Users, DollarSign } from "lucide-react";
+import { useCollection } from "@/firebase/firestore/use-collection";
+import { collection } from "firebase/firestore";
+import { useFirebase, useMemoFirebase } from "@/firebase";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { doc, updateDoc } from "firebase/firestore";
 
-// Dummy Data
-const DUMMY_USERS: User[] = [
-  { id: '1', name: 'John Doe', phone: '+919876543210', emailId: 'user1@tiranga.in', balance: 1500.75, joinDate: '2024-03-18' },
-  { id: '2', name: 'Jane Smith', phone: '+919876543211', emailId: 'user2@tiranga.in', balance: 250.00, joinDate: '2024-03-17' },
-];
 const DUMMY_DEPOSITS: DepositRequest[] = [
   { id: 'd1', userId: '1', userName: 'John Doe', amount: 500, status: 'pending', date: '2024-03-18' },
 ];
@@ -73,7 +75,58 @@ export function DashboardTab() {
   )
 }
 
+function BalanceDialog({ user, children }: { user: User, children: React.ReactNode }) {
+    const [open, setOpen] = useState(false);
+    const [amount, setAmount] = useState(0);
+    const { firestore } = useFirebase();
+  
+    const handleBalanceUpdate = async (operation: 'add' | 'deduct') => {
+      if (!firestore) return;
+      const newBalance = operation === 'add' 
+        ? user.balance + amount 
+        : user.balance - amount;
+  
+      const userRef = doc(firestore, 'users', user.id);
+      await updateDoc(userRef, { balance: newBalance });
+      setOpen(false);
+      setAmount(0);
+    };
+  
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>{children}</DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Balance for {user.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>Current Balance: ₹{user.balance.toFixed(2)}</p>
+            <Label htmlFor="amount">Amount</Label>
+            <Input 
+              id="amount" 
+              type="number" 
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+            />
+          </div>
+          <DialogFooter className="space-x-2">
+            <Button onClick={() => handleBalanceUpdate('add')}>Add Balance</Button>
+            <Button variant="destructive" onClick={() => handleBalanceUpdate('deduct')}>Deduct Balance</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
 export function UsersTab() {
+  const { firestore } = useFirebase();
+  const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const { data: users, isLoading } = useCollection<User>(usersRef);
+
+  if (isLoading) {
+    return <p>Loading users...</p>
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -92,7 +145,7 @@ export function UsersTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {DUMMY_USERS.map((user) => (
+            {users?.map((user) => (
               <TableRow key={user.id}>
                 <TableCell>
                   <div className="font-medium">{user.name}</div>
@@ -100,10 +153,11 @@ export function UsersTab() {
                 </TableCell>
                 <TableCell>{user.emailId}</TableCell>
                 <TableCell>₹{user.balance.toFixed(2)}</TableCell>
-                <TableCell>{user.joinDate}</TableCell>
+                <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell className="space-x-2">
-                  <Button size="sm">Add Balance</Button>
-                  <Button size="sm" variant="destructive">Deduct Balance</Button>
+                    <BalanceDialog user={user}>
+                        <Button size="sm">Edit Balance</Button>
+                    </BalanceDialog>
                 </TableCell>
               </TableRow>
             ))}

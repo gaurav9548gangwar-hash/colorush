@@ -12,7 +12,7 @@ import { useFirebase } from "@/firebase"
 
 declare global {
   interface Window {
-    recaptchaVerifier: RecaptchaVerifier
+    recaptchaVerifier?: RecaptchaVerifier
     confirmationResult: any
   }
 }
@@ -26,37 +26,41 @@ export default function LoginPage() {
   const { auth } = useFirebase()
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (auth && !window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
-        size: "invisible",
-        callback: (response: any) => {
-          // reCAPTCHA solved, allow signInWithPhoneNumber.
-        },
-      })
-    }
-  }, [auth])
-
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!auth) return
     setIsSubmitting(true)
+
     try {
       const formattedPhoneNumber = `+${phoneNumber.replace(/\D/g, '')}`
-      const confirmationResult = await signInWithPhoneNumber(auth, formattedPhoneNumber, window.recaptchaVerifier)
+      
+      const appVerifier = window.recaptchaVerifier ?? new RecaptchaVerifier(auth, "recaptcha-container", {
+        size: "invisible",
+        callback: (response: any) => {
+          // reCAPTCHA solved, allow signInWithPhoneNumber.
+        },
+      });
+      
+      window.recaptchaVerifier = appVerifier;
+
+      const confirmationResult = await signInWithPhoneNumber(auth, formattedPhoneNumber, appVerifier)
       window.confirmationResult = confirmationResult
       toast({
         title: "OTP Sent",
         description: "We've sent an OTP to your phone number.",
       })
       setStep("otp")
-    } catch (error: any) {
+    } catch (error: any)
+    {
       console.error("Error sending OTP:", error)
       toast({
         variant: "destructive",
         title: "Failed to send OTP",
         description: error.message || "Please try again.",
       })
+      // Reset reCAPTCHA if it exists
+      window.recaptchaVerifier?.clear();
+
     } finally {
       setIsSubmitting(false)
     }

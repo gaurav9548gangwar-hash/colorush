@@ -9,6 +9,7 @@ import {
   SidebarTrigger,
   SidebarContent,
   SidebarFooter,
+  SidebarInset,
 } from "@/components/ui/sidebar";
 import { LogOut } from "lucide-react";
 import AdminSidebarItems from "./sidebar-items";
@@ -28,8 +29,10 @@ export default function AdminLayout({
   const router = useRouter();
 
   useEffect(() => {
-    if (!isUserLoading && (!user || user.uid !== ADMIN_UID)) {
-      router.replace("/admin/login");
+    if (!isUserLoading) {
+      if (!user || user.uid !== ADMIN_UID) {
+        router.replace("/admin/login");
+      }
     }
   }, [user, isUserLoading, router]);
 

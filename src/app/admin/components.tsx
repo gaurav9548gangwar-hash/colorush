@@ -1,24 +1,18 @@
 'use client'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { DepositRequest, GameResult, User, WithdrawalRequest } from "@/lib/types";
+import type { Deposit, GameResult, User, Withdrawal } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Activity, Gamepad2, Users, DollarSign } from "lucide-react";
 import { useCollection } from "@/firebase/firestore/use-collection";
-import { collection, doc } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, runTransaction } from "firebase/firestore";
 import { useFirebase, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
-const DUMMY_DEPOSITS: DepositRequest[] = [
-  { id: 'd1', userId: '1', userName: 'John Doe', amount: 500, status: 'pending', date: '2024-03-18' },
-];
-const DUMMY_WITHDRAWALS: WithdrawalRequest[] = [
-  { id: 'w1', userId: '2', userName: 'Jane Smith', amount: 100, upi: 'jane@upi', status: 'pending', date: '2024-03-18' },
-];
 const DUMMY_RESULTS: GameResult[] = Array.from({ length: 10 }, (_, i) => ({
   id: `g${i}`,
   gameId: `wingo1_2024031801120${9 - i}`,
@@ -167,7 +161,63 @@ export function UsersTab() {
   )
 }
 
+const useRequests = <T extends Deposit | Withdrawal>(requestType: 'deposits' | 'withdrawals') => {
+    const { firestore } = useFirebase();
+    const requestsRef = useMemoFirebase(() => firestore ? collectionGroup(firestore, requestType) : null, [firestore, requestType]);
+    const { data: requests, isLoading } = useCollection<Omit<T, 'id'>>(requestsRef);
+    const [requestsWithUsers, setRequestsWithUsers] = useState<(T & { user?: User })[]>([]);
+  
+    useEffect(() => {
+      const fetchUsers = async () => {
+        if (requests && firestore) {
+          const enrichedRequests = await Promise.all(
+            requests.map(async (req) => {
+              const userRef = doc(firestore, 'users', req.userId);
+              const userSnap = await getDoc(userRef);
+              return { ...req, user: userSnap.exists() ? (userSnap.data() as User) : undefined };
+            })
+          );
+          setRequestsWithUsers(enrichedRequests);
+        }
+      };
+      fetchUsers();
+    }, [requests, firestore]);
+  
+    return { data: requestsWithUsers, isLoading };
+  };
+
 export function DepositsTab() {
+    const { data: deposits, isLoading } = useRequests<Deposit>('deposits');
+    const { firestore } = useFirebase();
+  
+    const handleRequest = async (deposit: Deposit, newStatus: 'approved' | 'rejected') => {
+        if (!firestore) return;
+        
+        const depositRef = doc(firestore, `users/${deposit.userId}/deposits`, deposit.id);
+
+        try {
+            await runTransaction(firestore, async (transaction) => {
+                const userRef = doc(firestore, "users", deposit.userId);
+                const userDoc = await transaction.get(userRef);
+
+                if (!userDoc.exists()) {
+                    throw "User not found!";
+                }
+
+                if (newStatus === 'approved') {
+                    const newBalance = (userDoc.data().balance || 0) + deposit.amount;
+                    transaction.update(userRef, { balance: newBalance });
+                }
+                
+                transaction.update(depositRef, { status: newStatus });
+            });
+        } catch (e) {
+            console.error("Transaction failed: ", e);
+        }
+    };
+  
+    if (isLoading) return <p>Loading deposits...</p>;
+
   return (
     <Card>
       <CardHeader><CardTitle>Pending Deposit Requests</CardTitle></CardHeader>
@@ -183,15 +233,15 @@ export function DepositsTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {DUMMY_DEPOSITS.map((deposit) => (
+            {deposits.filter(d => d.status === 'pending').map((deposit) => (
               <TableRow key={deposit.id}>
-                <TableCell>{deposit.userName}</TableCell>
+                <TableCell>{deposit.user?.name || deposit.userId}</TableCell>
                 <TableCell>₹{deposit.amount.toFixed(2)}</TableCell>
-                <TableCell>{deposit.date}</TableCell>
+                <TableCell>{new Date(deposit.requestedAt).toLocaleString()}</TableCell>
                 <TableCell><Badge variant="secondary">{deposit.status}</Badge></TableCell>
                 <TableCell className="space-x-2">
-                  <Button size="sm" variant="default">Approve</Button>
-                  <Button size="sm" variant="destructive">Reject</Button>
+                  <Button size="sm" variant="default" onClick={() => handleRequest(deposit, 'approved')}>Approve</Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleRequest(deposit, 'rejected')}>Reject</Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -203,6 +253,38 @@ export function DepositsTab() {
 }
 
 export function WithdrawalsTab() {
+    const { data: withdrawals, isLoading } = useRequests<Withdrawal>('withdrawals');
+    const { firestore } = useFirebase();
+
+    const handleRequest = async (withdrawal: Withdrawal, newStatus: 'approved' | 'rejected') => {
+        if (!firestore) return;
+        
+        const withdrawalRef = doc(firestore, `users/${withdrawal.userId}/withdrawals`, withdrawal.id);
+
+        try {
+            await runTransaction(firestore, async (transaction) => {
+                if (newStatus === 'approved') {
+                    const userRef = doc(firestore, "users", withdrawal.userId);
+                    const userDoc = await transaction.get(userRef);
+
+                    if (!userDoc.exists() || userDoc.data().balance < withdrawal.amount) {
+                        throw "Insufficient balance or user not found!";
+                    }
+                    
+                    const newBalance = userDoc.data().balance - withdrawal.amount;
+                    transaction.update(userRef, { balance: newBalance });
+                }
+                
+                transaction.update(withdrawalRef, { status: newStatus });
+            });
+        } catch (e) {
+            console.error("Transaction failed: ", e);
+            // Optionally, show a toast to the admin
+        }
+    };
+  
+    if (isLoading) return <p>Loading withdrawals...</p>;
+
     return (
       <Card>
         <CardHeader><CardTitle>Pending Withdrawal Requests</CardTitle></CardHeader>
@@ -219,16 +301,16 @@ export function WithdrawalsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {DUMMY_WITHDRAWALS.map((w) => (
+              {withdrawals.filter(w => w.status === 'pending').map((w) => (
                 <TableRow key={w.id}>
-                  <TableCell>{w.userName}</TableCell>
+                  <TableCell>{w.user?.name || w.userId}</TableCell>
                   <TableCell>₹{w.amount.toFixed(2)}</TableCell>
-                  <TableCell>{w.upi}</TableCell>
-                  <TableCell>{w.date}</TableCell>
+                  <TableCell>{w.upiBank}</TableCell>
+                  <TableCell>{new Date(w.requestedAt).toLocaleString()}</TableCell>
                   <TableCell><Badge variant="secondary">{w.status}</Badge></TableCell>
                   <TableCell className="space-x-2">
-                    <Button size="sm">Approve</Button>
-                    <Button size="sm" variant="destructive">Reject</Button>
+                    <Button size="sm" onClick={() => handleRequest(w, 'approved')}>Approve</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleRequest(w, 'rejected')}>Reject</Button>
                   </TableCell>
                 </TableRow>
               ))}

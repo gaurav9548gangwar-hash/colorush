@@ -14,19 +14,60 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { useFirebase, addDocumentNonBlocking } from "@/firebase";
+import { collection } from "firebase/firestore";
 
 export default function WithdrawDialog() {
   const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [upi, setUpi] = useState('');
   const { toast } = useToast();
+  const { user, firestore } = useFirebase();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Logic to handle withdrawal request would go here
-    toast({
-      title: "Request Submitted",
-      description: "Your withdrawal request is being processed.",
-    });
-    setOpen(false);
+    if (!user || !firestore) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "You must be logged in to make a withdrawal.",
+      });
+      return;
+    }
+     if (Number(amount) <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Amount",
+        description: "Please enter a valid withdrawal amount.",
+      });
+      return;
+    }
+
+    try {
+      const withdrawalsRef = collection(firestore, `users/${user.uid}/withdrawals`);
+      await addDocumentNonBlocking(withdrawalsRef, {
+        userId: user.uid,
+        amount: Number(amount),
+        upiBank: upi,
+        status: "pending",
+        requestedAt: new Date().toISOString(),
+      });
+
+      toast({
+        title: "Request Submitted",
+        description: "Your withdrawal request is being processed.",
+      });
+      setOpen(false);
+      setAmount('');
+      setUpi('');
+    } catch (error) {
+       console.error("Error submitting withdrawal request:", error);
+      toast({
+        variant: "destructive",
+        title: "Submission Failed",
+        description: "Could not submit your withdrawal request. Please try again.",
+      });
+    }
   };
 
   return (
@@ -52,6 +93,8 @@ export default function WithdrawDialog() {
                 type="number"
                 placeholder="₹500"
                 className="col-span-3"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
                 required
               />
             </div>
@@ -63,6 +106,8 @@ export default function WithdrawDialog() {
                 id="upi"
                 placeholder="yourname@upi"
                 className="col-span-3"
+                value={upi}
+                onChange={(e) => setUpi(e.target.value)}
                 required
               />
             </div>

@@ -7,6 +7,34 @@ export type User = {
   createdAt: string;
 };
 
+export type Deposit = {
+  id: string;
+  userId: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  user?: User; // Optional: To hold merged user data
+};
+
+export type Withdrawal = {
+  id: string;
+  userId: string;
+  amount: number;
+  upiBank: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  user?: User; // Optional: To hold merged user data
+};
+
+
+export type GameResult = {
+  id: string;
+  gameId: string;
+  resultNumber: number;
+  resultColor: 'green' | 'orange' | 'white';
+};
+
+// Legacy types for dummy data, can be removed later
 export type DepositRequest = {
   id: string;
   userId: string;
@@ -24,11 +52,4 @@ export type WithdrawalRequest = {
   upi: string;
   status: 'pending' | 'approved' | 'rejected';
   date: string;
-};
-
-export type GameResult = {
-  id: string;
-  gameId: string;
-  resultNumber: number;
-  resultColor: 'green' | 'orange' | 'white';
 };

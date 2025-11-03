@@ -5,6 +5,7 @@ import type { DepositRequest, GameResult, User, WithdrawalRequest } from "@/lib/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Activity, Gamepad2, Users, DollarSign } from "lucide-react";
 
 // Dummy Data
 const DUMMY_USERS: User[] = [
@@ -70,19 +71,6 @@ export function DashboardTab() {
       </Card>
     </div>
   )
-}
-
-function Users({ className }: { className?: string }) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-}
-function DollarSign({ className }: { className?: string }) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="2" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
-}
-function Gamepad2({ className }: { className?: string }) {
-    return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="6" x2="10" y1="12" y2="12" /><line x1="8" x2="8" y1="10" y2="14" /><path d="M17.5 21a2.5 2.5 0 0 0 2.5-2.5V17a2.5 2.5 0 0 0-2.5-2.5H13v-3a2.5 2.5 0 0 0-2.5-2.5H6.5A2.5 2.5 0 0 0 4 11.5v4A2.5 2.5 0 0 0 6.5 18H10v3a2.5 2.5 0 0 0 2.5 2.5h5Z" /><line x1="14" x2="18" y1="6" y2="6" /><line x1="16" x2="16" y1="4" y2="8" /></svg>
-}
-function Activity({ className }: { className?: string }) {
-    return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
 }
 
 export function UsersTab() {

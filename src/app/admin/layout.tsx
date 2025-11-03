@@ -12,7 +12,7 @@ import {
   SidebarInset,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Home, Users, Wallet, Gamepad2, LogOut, Settings, CreditCard, ArrowLeftRight } from "lucide-react";
+import { LogOut } from "lucide-react";
 import AdminSidebarItems from "./sidebar-items";
 
 export default function AdminLayout({

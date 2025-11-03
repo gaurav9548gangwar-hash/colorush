@@ -1,3 +1,4 @@
+
 'use client'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -74,12 +75,14 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
     const { firestore } = useFirebase();
   
     const handleBalanceUpdate = (operation: 'add' | 'deduct') => {
-      if (!firestore) return;
+      if (!firestore || !user) return;
+      
       const newBalance = operation === 'add' 
-        ? user.balance + amount 
-        : user.balance - amount;
+        ? (user.balance || 0) + amount 
+        : (user.balance || 0) - amount;
   
       const userRef = doc(firestore, 'users', user.id);
+      // Use the non-blocking update function
       updateDocumentNonBlocking(userRef, { balance: newBalance });
       setOpen(false);
       setAmount(0);
@@ -93,7 +96,7 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
             <DialogTitle>Edit Balance for {user.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p>Current Balance: ₹{user.balance.toFixed(2)}</p>
+            <p>Current Balance: ₹{(user.balance || 0).toFixed(2)}</p>
             <Label htmlFor="amount">Amount</Label>
             <Input 
               id="amount" 
@@ -145,8 +148,8 @@ export function UsersTab() {
                   <div className="text-sm text-muted-foreground">{user.phone}</div>
                 </TableCell>
                 <TableCell>{user.emailId}</TableCell>
-                <TableCell>₹{user.balance.toFixed(2)}</TableCell>
-                <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell>₹{(user.balance || 0).toFixed(2)}</TableCell>
+                <TableCell>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                 <TableCell className="space-x-2">
                     <BalanceDialog user={user}>
                         <Button size="sm">Edit Balance</Button>
@@ -164,9 +167,9 @@ export function UsersTab() {
 const useRequests = <T extends Deposit | Withdrawal>(requestType: 'deposits' | 'withdrawals') => {
     const { firestore } = useFirebase();
     const requestsQuery = useMemoFirebase(() => firestore ? collectionGroup(firestore, requestType) : null, [firestore, requestType]);
-    const { data: requests, isLoading } = useCollection<(Omit<T, 'id'> & { id: string })>(requestsQuery);
+    const { data: requests, isLoading } = useCollection<(Omit<T, 'id'> & { id: string; path: string })>(requestsQuery);
 
-    const [requestsWithUsers, setRequestsWithUsers] = useState<(T & { user?: User })[]>([]);
+    const [requestsWithUsers, setRequestsWithUsers] = useState<(T & { user?: User; path: string })[]>([]);
     
     useEffect(() => {
         const fetchUsers = async () => {
@@ -175,14 +178,10 @@ const useRequests = <T extends Deposit | Withdrawal>(requestType: 'deposits' | '
                     requests.map(async (req) => {
                         const userRef = doc(firestore, 'users', req.userId);
                         const userSnap = await getDoc(userRef);
-                        const requestDoc = (req as any);
-                        const requestId = requestDoc.id; // The ID is now on the object
-                        
                         return { 
                             ...req,
-                            id: requestId, 
                             user: userSnap.exists() ? (userSnap.data() as User) : undefined 
-                        } as (T & { user?: User });
+                        } as (T & { user?: User; path: string });
                     })
                 );
                 setRequestsWithUsers(enrichedRequests);
@@ -198,10 +197,10 @@ export function DepositsTab() {
     const { data: deposits, isLoading } = useRequests<Deposit>('deposits');
     const { firestore } = useFirebase();
   
-    const handleRequest = async (deposit: Deposit, newStatus: 'approved' | 'rejected') => {
+    const handleRequest = async (deposit: Deposit & {path: string}, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
         
-        const depositRef = doc(firestore, `users/${deposit.userId}/deposits`, deposit.id);
+        const depositRef = doc(firestore, deposit.path);
 
         try {
             await runTransaction(firestore, async (transaction) => {
@@ -269,10 +268,10 @@ export function WithdrawalsTab() {
     const { data: withdrawals, isLoading } = useRequests<Withdrawal>('withdrawals');
     const { firestore } = useFirebase();
 
-    const handleRequest = async (withdrawal: Withdrawal, newStatus: 'approved' | 'rejected') => {
+    const handleRequest = async (withdrawal: Withdrawal & {path: string}, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
         
-        const withdrawalRef = doc(firestore, `users/${withdrawal.userId}/withdrawals`, withdrawal.id);
+        const withdrawalRef = doc(firestore, withdrawal.path);
 
         try {
             await runTransaction(firestore, async (transaction) => {

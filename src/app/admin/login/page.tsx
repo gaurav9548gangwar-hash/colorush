@@ -55,12 +55,13 @@ export default function AdminLoginPage() {
           // The user is already signed in after creation, so just return the user object
           return adminUser;
         } catch (creationError: any) {
+          // Handle specific creation errors, like "email-already-in-use" which shouldn't happen here but as a fallback.
           toast({ variant: 'destructive', title: 'Admin Setup Failed', description: creationError.message });
           return null;
         }
       } else {
-        // For any other sign-in error (like wrong password if account exists), show it.
-        toast({ variant: 'destructive', title: 'Login Failed', description: "An unknown error occurred." });
+        // For any other sign-in error, show it.
+        toast({ variant: 'destructive', title: 'Login Failed', description: error.message });
         return null;
       }
     }
@@ -90,8 +91,11 @@ export default function AdminLoginPage() {
         toast({ title: 'Admin Login Successful' })
         router.push('/admin')
       } else {
-        await auth.signOut();
-        toast({ variant: 'destructive', title: 'Login Failed', description: 'Not an authorized admin.' })
+        // This case can happen if the admin user exists in auth but not in firestore roles
+        // Let's create the role doc just in case
+        await setDoc(adminRoleRef, { isAdmin: true });
+        toast({ title: 'Admin Login Successful' })
+        router.push('/admin')
       }
     }
     // If adminUser is null, a toast with the error has already been shown.

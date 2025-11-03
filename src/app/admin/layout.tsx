@@ -15,7 +15,7 @@ import { LogOut } from "lucide-react";
 import AdminSidebarItems from "./sidebar-items";
 import { useFirebase } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { signOut } from "firebase/auth";
 
 const ADMIN_UID = "p8I214dVO5fNkBpA0fsOaB2b6n82"; // This should be your actual admin UID
@@ -27,13 +27,12 @@ export default function AdminLayout({
 }) {
   const { user, isUserLoading, auth } = useFirebase();
   const router = useRouter();
-  const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
+    // Wait until the user loading state is resolved
     if (!isUserLoading) {
-      if (user && user.uid === ADMIN_UID) {
-        setIsAuthorized(true);
-      } else {
+      // If there is no user or the user is not the admin, redirect to login
+      if (!user || user.uid !== ADMIN_UID) {
         router.replace("/admin/login");
       }
     }
@@ -46,7 +45,9 @@ export default function AdminLayout({
     }
   };
 
-  if (isUserLoading || !isAuthorized) {
+  // While loading or if the user is not the admin (and redirection is in progress), show a loading indicator.
+  // This prevents the admin content from flashing briefly for unauthorized users.
+  if (isUserLoading || !user || user.uid !== ADMIN_UID) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p>Loading...</p>
@@ -54,6 +55,7 @@ export default function AdminLayout({
     );
   }
 
+  // If the user is authenticated and is the admin, render the layout.
   return (
     <SidebarProvider>
       <Sidebar>

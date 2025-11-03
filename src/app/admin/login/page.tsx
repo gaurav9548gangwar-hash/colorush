@@ -13,7 +13,7 @@ import { useFirebase } from '@/firebase'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 
 const ADMIN_EMAIL = 'admin@tiranga.in'
-const ADMIN_PASSWORD = 'gaurav@9548'
+const ADMIN_PASSWORD = 'gangwar@9548'
 
 export default function AdminLoginPage() {
   const [password, setPassword] = useState('')

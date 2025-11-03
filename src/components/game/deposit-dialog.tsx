@@ -51,6 +51,8 @@ export default function DepositDialog() {
         amount: Number(amount),
         status: "pending",
         requestedAt: new Date().toISOString(),
+        // In a real app, you would upload the screenshot and save the URL
+        screenshotUrl: "https://example.com/screenshot.jpg", 
       });
 
       toast({
@@ -83,10 +85,10 @@ export default function DepositDialog() {
         </DialogHeader>
         <div className="flex justify-center">
             <Image 
-                src="https://picsum.photos/seed/qr/250/250"
+                src="https://storage.googleapis.com/studio-bug-images-central1/290f6702-861c-4375-ab19-3f040224d557"
                 alt="QR Code for payment"
-                width={250}
-                height={250}
+                width={300}
+                height={400}
                 data-ai-hint="qr code"
             />
         </div>

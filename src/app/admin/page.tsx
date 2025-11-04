@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { signOut } from 'firebase/auth'
 import { useCollection } from '@/firebase/firestore/use-collection'
 import { collection, doc, updateDoc } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
@@ -75,44 +74,41 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
 }
 
 export default function AdminPage() {
-  const { user, isUserLoading, auth, firestore } = useFirebase();
+  const { firestore } = useFirebase();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
+  const [isClient, setIsClient] = useState(false);
 
+  useEffect(() => {
+    setIsClient(true);
+    const isAuthenticated = sessionStorage.getItem('isAdminAuthenticated') === 'true';
+    if (!isAuthenticated) {
+      router.replace('/admin/login');
+    }
+  }, [router]);
+  
   const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
   const { data: users, isLoading, error } = useCollection<User>(usersRef);
 
-  useEffect(() => {
-    if (!isUserLoading) {
-      // Simple check: if there's no user, or the user's email is not the admin email, redirect.
-      if (!user || user.email !== 'admin@tiranga.in') {
-        router.replace("/admin/login");
-      }
-    }
-  }, [user, isUserLoading, router]);
-
-  const handleLogout = async () => {
-    if (auth) {
-      await signOut(auth);
-      router.push("/admin/login");
-    }
+  const handleLogout = () => {
+    sessionStorage.removeItem('isAdminAuthenticated');
+    router.push("/admin/login");
   };
 
   const filteredUsers = users?.filter(u => 
-    u.id !== user?.uid && ( // Exclude admin from the list
-        (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (u.phone && u.phone.includes(searchTerm)) ||
-        (u.emailId && u.emailId.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
+    (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (u.phone && u.phone.includes(searchTerm)) ||
+    (u.emailId && u.emailId.toLowerCase().includes(searchTerm.toLowerCase()))
   );
-  
-  if (isUserLoading || !user) {
+
+  if (!isClient) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p>Loading...</p>
       </div>
     );
   }
+
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-8">

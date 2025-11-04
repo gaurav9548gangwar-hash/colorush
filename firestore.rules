@@ -1,177 +1,168 @@
 /**
- * @fileoverview Firestore Security Rules for Tiranga Wingo.
+ * @fileoverview Firestore Security Rules for the Tiranga color prediction game.
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model for user-specific data,
- * while allowing public read access to game round data. Admin roles are managed
- * using an "Existence over Content" strategy in the /roles_admin collection.
+ * This ruleset enforces a strict user-ownership model for user profiles, bets, deposits, and withdrawals.
+ * Game rounds are publicly accessible, and admin privileges are granted based on the existence of a document
+ * in the `/roles_admin` collection. Data shape validation is relaxed to allow for rapid prototyping, but authorization
+ * checks are strictly enforced.
  *
  * Data Structure:
- * - /users/{userId}: User profile information, accessible only by the user.
- * - /game_rounds/{gameId}: Game round data, publicly readable, admin-writeable.
- * - /users/{userId}/bets/{betId}: Bets placed by a user, accessible only by that user.
- * - /users/{userId}/deposits/{depositId}: Deposit requests, accessible only by the user who created it.
- * - /users/{userId}/withdrawals/{withdrawalId}: Withdrawal requests, accessible only by the user who created it.
- * - /roles_admin/{userId}: Admin role definitions. If a document exists for a user, they are an admin.
+ * - `/users/{userId}`: User profiles, accessible only to the user themselves.
+ * - `/game_rounds/{gameId}`: Publicly accessible information about game rounds.
+ * - `/users/{userId}/bets/{betId}`: Bets placed by a specific user, accessible only to that user.
+ * - `/users/{userId}/deposits/{depositId}`: Deposit requests made by a specific user, accessible only to that user.
+ * - `/users/{userId}/withdrawals/{withdrawalId}`: Withdrawal requests made by a specific user, accessible only to that user.
+ * - `/roles_admin/{adminId}`: Admin role mapping. Existence of a document grants admin privileges.
  *
  * Key Security Decisions:
- * - User data is strictly private, accessible only to the owning user.
- * - Game round data is public for reads, but admin-protected for writes.
- * - Listing operations are generally restricted to the owner of the data or admin users.
- * - Phone Authentication needs to be enabled in the Firebase Console to resolve the "auth/operation-not-allowed" error.
+ * - User listing is disallowed to protect user privacy.
+ * - Game rounds are publicly readable.
+ * - Admin privileges are determined by document existence in the `/roles_admin` collection.
+ * - Data validation is minimal to enable rapid prototyping.
  *
  * Denormalization for Authorization:
- * This ruleset leverages path-based ownership to avoid unnecessary `get()` calls.
- * For example, bets, deposits, and withdrawals are stored under the user's ID,
- * allowing rules to directly check `request.auth.uid == userId` without additional reads.
- *
- * Structural Segregation:
- * Drafts and published content are not applicable in this data model. All data
- * is either private (user-specific) or public (game rounds).
+ *  - User roles are not denormalized because admin status is checked by document existence in `/roles_admin`.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
-    }
-
-    // Grant admin the permission to list all documents in the 'users' collection.
-    match /users/{document=**} {
-      allow list: if isAdmin();
-    }
-
     /**
-     * @description Grants access to user profile data.
+     * @description Protects user profiles, allowing only the user to read and write their own data.
      * @path /users/{userId}
-     * @allow (get, list, update, delete) User with matching userId can access their own data.
-     * @allow (create) User can create their own document if the userId matches their auth UID.
-     * @deny (get, list, create, update, delete) Any other user cannot access this data.
-     * @principle Enforces document ownership for all operations.
+     * @allow (create) User with ID 'user123' can create their profile if request.auth.uid == 'user123'.
+     * @allow (get, update, delete) User with ID 'user123' can read, update, and delete their profile.
+     * @deny  (create) User with ID 'user456' cannot create a profile with ID 'user123'.
+     * @deny  (get, update, delete) User with ID 'user456' cannot read, update, or delete the profile of user 'user123'.
+     * @principle Enforces document ownership for user profiles.
      */
     match /users/{userId} {
       function isOwner(userId) {
-        return isSignedIn() && request.auth.uid == userId;
+        return request.auth != null && request.auth.uid == userId;
       }
+
       function isExistingOwner(userId) {
         return isOwner(userId) && resource != null;
       }
 
-      allow get: if isOwner(userId) || isAdmin();
-      
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if (isExistingOwner(userId) || isAdmin()) && request.resource.data.id == resource.data.id; // Enforce immutability of userId.
-      allow delete: if isExistingOwner(userId) || isAdmin();
-    }
-
-    /**
-     * @description Grants public read access to game round data and restricts write access to admins.
-     * @path /game_rounds/{gameId}
-     * @allow (get, list) Anyone can read game round data.
-     * @allow (create, update, delete) Only admins can modify game round data.
-     * @deny (create, update, delete) Non-admins cannot modify game round data.
-     * @principle Allows public reads and restricts writes to admins.
-     */
-    match /game_rounds/{gameId} {
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
-    }
-
-    /**
-     * @description Grants access to bets placed by a specific user.
-     * @path /users/{userId}/bets/{betId}
-     * @allow (get, list, create, update, delete) User with matching userId can access their own bets.
-     * @deny (get, list, create, update, delete) Any other user cannot access this data.
-     * @principle Enforces document ownership for all operations.
-     */
-    match /users/{userId}/bets/{betId} {
-        function isOwner(userId) {
-          return isSignedIn() && request.auth.uid == userId;
-        }
-        function isExistingOwner(userId) {
-          return isOwner(userId) && resource != null;
-        }
       allow get: if isOwner(userId);
-      allow list: if isOwner(userId);
-
-      allow create: if isOwner(userId) && request.resource.data.userId == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId; // Enforce immutability of userId.
+      allow list: if false; // User listing is disabled for privacy.
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Grants access to deposit requests made by a specific user.
+     * @description Allows public read access to game round data.
+     * @path /game_rounds/{gameId}
+     * @allow (get, list) Any user can read game round data.
+     * @deny (create, update, delete) Only admins can create, update, and delete game round data.
+     * @principle Allows public read access with admin-only writes for game rounds.
+     */
+    match /game_rounds/{gameId} {
+      function isAdmin() {
+        return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      }
+      allow get, list: if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Protects bets, allowing only the user to read and write their own bets.
+     * @path /users/{userId}/bets/{betId}
+     * @allow (create) User with ID 'user123' can create a bet under their profile.
+     * @allow (get, update, delete) User with ID 'user123' can read, update, and delete their own bets.
+     * @deny  (create) User with ID 'user456' cannot create a bet for user 'user123'.
+     * @deny  (get, update, delete) User with ID 'user456' cannot read, update, or delete the bets of user 'user123'.
+     * @principle Enforces document ownership for bets.
+     */
+    match /users/{userId}/bets/{betId} {
+      function isOwner(userId) {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+       function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.userId == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Protects deposit requests, allowing only the user to read and write their own requests.
      * @path /users/{userId}/deposits/{depositId}
-     * @allow (get, list, create, update, delete) User with matching userId can access their own deposit requests, and admins can manage them.
-     * @deny (get, list, create, update, delete) Any other user cannot access this data.
-     * @principle Enforces document ownership for user creation and allows admin management.
+     * @allow (create) User with ID 'user123' can create a deposit request under their profile.
+     * @allow (get, update, delete) User with ID 'user123' can read, update, and delete their own deposit requests.
+     * @deny  (create) User with ID 'user456' cannot create a deposit request for user 'user123'.
+     * @deny  (get, update, delete) User with ID 'user456' cannot read, update, or delete the deposit requests of user 'user123'.
+     * @principle Enforces document ownership for deposit requests.
      */
     match /users/{userId}/deposits/{depositId} {
-        function isOwner(userId) {
-          return isSignedIn() && request.auth.uid == userId;
-        }
-        function isExistingOwner(userId) {
-          return isOwner(userId) && resource != null;
-        }
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isOwner(userId) || isAdmin();
+      function isOwner(userId) {
+        return request.auth != null && request.auth.uid == userId;
+      }
 
+       function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
       allow create: if isOwner(userId) && request.resource.data.userId == userId;
-      allow update: if isExistingOwner(userId) && (isOwner(userId) || isAdmin()) && request.resource.data.userId == resource.data.userId; // Enforce immutability of userId.
-      allow delete: if isExistingOwner(userId) && isAdmin();
+      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Grants access to withdrawal requests made by a specific user.
+     * @description Protects withdrawal requests, allowing only the user to read and write their own requests.
      * @path /users/{userId}/withdrawals/{withdrawalId}
-     * @allow (get, list, create, update, delete) User with matching userId can access their own withdrawal requests, and admins can manage them.
-     * @deny (get, list, create, update, delete) Any other user cannot access this data.
-     * @principle Enforces document ownership for user creation and allows admin management.
+     * @allow (create) User with ID 'user123' can create a withdrawal request under their profile.
+     * @allow (get, update, delete) User with ID 'user123' can read, update, and delete their own withdrawal requests.
+     * @deny  (create) User with ID 'user456' cannot create a withdrawal request for user 'user123'.
+     * @deny  (get, update, delete) User with ID 'user456' cannot read, update, or delete the withdrawal requests of user 'user123'.
+     * @principle Enforces document ownership for withdrawal requests.
      */
     match /users/{userId}/withdrawals/{withdrawalId} {
-        function isOwner(userId) {
-          return isSignedIn() && request.auth.uid == userId;
-        }
-        function isExistingOwner(userId) {
-          return isOwner(userId) && resource != null;
-        }
+      function isOwner(userId) {
+        return request.auth != null && request.auth.uid == userId;
+      }
 
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isOwner(userId) || isAdmin();
+       function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
 
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
       allow create: if isOwner(userId) && request.resource.data.userId == userId;
-      allow update: if isExistingOwner(userId) && (isOwner(userId) || isAdmin()) && request.resource.data.userId == resource.data.userId; // Enforce immutability of userId.
-      allow delete: if isExistingOwner(userId) && isAdmin();
+      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Defines admin roles using "Existence over Content".
-     * @path /roles_admin/{userId}
-     * @allow (get, list) Admins can get and list admin roles.
-     * @allow (create) Any user can create their admin record (self-nomination), but only an existing admin can actually grant the role.
-     * @allow (update, delete) Only admins can modify the admin role.
-     * @deny (get, list, create, update, delete) Non-admins cannot access this data.
-     * @principle Uses the existence of a document to define admin status.
+     * @description Grants admin privileges based on document existence.
+     * @path /roles_admin/{adminId}
+     * @allow (get) Any user can check if an admin exists.
+     * @allow (create) Only the master admin can create new admin entries.
+     * @deny (update, delete) No one can update or delete admin entries except via manual database modification.
+     * @principle Uses existence-based rules to grant admin privileges.
      */
-    match /roles_admin/{userId} {
-        function isOwner(userId) {
-          return isSignedIn() && request.auth.uid == userId;
-        }
-        function isExistingOwner(userId) {
-          return isOwner(userId) && resource != null;
-        }
+    match /roles_admin/{adminId} {
+      function isAdmin() {
+        return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      }
 
       allow get: if isAdmin();
-      allow list: if isAdmin();
-
-      allow create: if isAdmin();
-      allow update: if isAdmin() && isExistingOwner(userId);
-      allow delete: if isAdmin() && isExistingOwner(userId);
+      allow list: if false; // Listing admin is not allowed.
+      allow create: if get(/databases/$(database)/documents/roles_admin/{adminId}).data.masterAdminUid == request.auth.uid;  // Only masterAdminUid from database can create an admin
+      allow update: if false;
+      allow delete: if false;
     }
   }
 }

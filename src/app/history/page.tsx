@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/game/header';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, where } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 import type { Deposit, Withdrawal } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,13 +24,13 @@ export default function HistoryPage() {
   }, [user, isUserLoading, router]);
 
   const depositsRef = useMemoFirebase(
-    () => (user ? query(collection(firestore, 'deposits'), where('userId', '==', user.uid), orderBy('requestedAt', 'desc')) : null),
+    () => (user ? query(collection(firestore, 'deposits'), where('userId', '==', user.uid)) : null),
     [user, firestore]
   );
   const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsRef);
 
   const withdrawalsRef = useMemoFirebase(
-    () => (user ? query(collection(firestore, 'withdrawals'), where('userId', '==', user.uid), orderBy('requestedAt', 'desc')) : null),
+    () => (user ? query(collection(firestore, 'withdrawals'), where('userId', '==', user.uid)) : null),
     [user, firestore]
   );
   const { data: withdrawals, isLoading: isLoadingWithdrawals } = useCollection<Withdrawal>(withdrawalsRef);

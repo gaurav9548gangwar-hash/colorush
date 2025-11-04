@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCollection } from '@/firebase/firestore/use-collection'
-import { collection, doc, updateDoc } from 'firebase/firestore'
-import { useFirebase, useMemoFirebase, useUser } from '@/firebase'
-import type { User } from '@/lib/types'
+import { collection, doc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { useFirebase, useMemoFirebase } from '@/firebase'
+import type { User, Deposit, Withdrawal } from '@/lib/types'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -14,16 +14,19 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { LogOut, RefreshCw } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 
-function BalanceDialog({ user, children }: { user: User, children: React.ReactNode }) {
+function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(0);
   const { firestore } = useFirebase();
+  const { toast } = useToast();
 
   const handleBalanceUpdate = async (operation: 'add' | 'deduct') => {
     if (!firestore || !user || isNaN(amount) || amount <= 0) {
-      console.error("Invalid details for balance update");
+      toast({ variant: "destructive", title: "Invalid Amount", description: "Please enter a valid amount > 0" });
       return;
     }
 
@@ -32,22 +35,25 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
     const newBalance = operation === 'add' ? currentBalance + amount : currentBalance - amount;
 
     if (newBalance < 0) {
-      console.error("Balance cannot be negative.");
+      toast({ variant: "destructive", title: "Invalid Operation", description: "Balance cannot be negative." });
       return;
     }
 
     try {
       await updateDoc(userRef, { balance: newBalance });
+      toast({ title: "Success", description: `Balance for ${user.name} updated to ₹${newBalance.toFixed(2)}` });
       setOpen(false);
       setAmount(0);
+      onUpdate(); // Trigger refresh
     } catch (error) {
       console.error("Failed to update balance:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to update balance." });
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogTrigger asChild><Button size="sm">Edit Balance</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Balance for {user.name}</DialogTitle>
@@ -72,25 +78,94 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
   );
 }
 
+const ADMIN_UID = 'ADMIN_LOCK_USER'; // Special UID for lock system
+
 export default function AdminPage() {
-  const { firestore, auth } = useFirebase();
-  const { user: adminUser, isUserLoading } = useUser();
+  const { firestore } = useFirebase();
   const router = useRouter();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [key, setKey] = useState(0); // State to force re-render/re-fetch
+  const { toast } = useToast();
+
   useEffect(() => {
-    if (!isUserLoading && !adminUser) {
+    const authStatus = sessionStorage.getItem('isAdminAuthenticated');
+    if (authStatus !== 'true') {
       router.replace('/admin/login');
+    } else {
+      setIsAuthenticated(true);
     }
-  }, [adminUser, isUserLoading, router]);
+  }, [router]);
+
+  const forceRefresh = () => setKey(prevKey => prevKey + 1);
   
-  const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-  const { data: users, isLoading, error } = useCollection<User>(usersRef);
+  const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore, key]);
+  const { data: users, isLoading: isLoadingUsers, error: usersError } = useCollection<User>(usersRef);
+
+  const [deposits, setDeposits] = useState<(Deposit & { user?: User })[]>([]);
+  const [withdrawals, setWithdrawals] = useState<(Withdrawal & { user?: User })[]>([]);
+  const [isLoadingDeposits, setIsLoadingDeposits] = useState(true);
+  const [isLoadingWithdrawals, setIsLoadingWithdrawals] = useState(true);
+
+  useEffect(() => {
+    if (!firestore || !isAuthenticated) return;
+
+    const fetchRequests = async () => {
+      // Fetch all users first to map them to requests
+      const userList = users || [];
+
+      // Fetch Deposits
+      setIsLoadingDeposits(true);
+      const depositQuery = query(collection(firestore, 'deposits'));
+      const depositSnap = await getDocs(depositQuery);
+      const depositData = depositSnap.docs.map(d => ({ ...d.data(), id: d.id } as Deposit))
+        .map(dep => ({ ...dep, user: userList.find(u => u.id === dep.userId) }))
+        .filter(dep => dep.status === 'pending');
+      setDeposits(depositData);
+      setIsLoadingDeposits(false);
+
+      // Fetch Withdrawals
+      setIsLoadingWithdrawals(true);
+      const withdrawalQuery = query(collection(firestore, 'withdrawals'));
+      const withdrawalSnap = await getDocs(withdrawalQuery);
+      const withdrawalData = withdrawalSnap.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal))
+       .map(wd => ({ ...wd, user: userList.find(u => u.id === wd.userId) }))
+       .filter(wd => wd.status === 'pending');
+      setWithdrawals(withdrawalData);
+      setIsLoadingWithdrawals(false);
+    };
+
+    fetchRequests();
+  }, [firestore, isAuthenticated, users, key]);
+
+  const handleRequest = async (type: 'deposit' | 'withdrawal', requestId: string, userId: string, amount: number, action: 'approved' | 'rejected') => {
+    if (!firestore) return;
+
+    const requestRef = doc(firestore, `${type}s`, requestId);
+    const userRef = doc(firestore, 'users', userId);
+
+    try {
+      const batch = writeBatch(firestore);
+
+      if (action === 'approved' && type === 'deposit') {
+        const currentBalance = users?.find(u => u.id === userId)?.balance || 0;
+        batch.update(userRef, { balance: currentBalance + amount });
+      }
+      
+      batch.update(requestRef, { status: action });
+      await batch.commit();
+
+      toast({ title: 'Success', description: `Request has been ${action}.` });
+      forceRefresh();
+    } catch (error) {
+      console.error(`Failed to ${action} request:`, error);
+      toast({ variant: 'destructive', title: 'Error', description: `Could not process the request.` });
+    }
+  };
+
 
   const handleLogout = () => {
-    if (auth) {
-      auth.signOut();
-    }
+    sessionStorage.removeItem('isAdminAuthenticated');
     router.push("/admin/login");
   };
 
@@ -100,10 +175,10 @@ export default function AdminPage() {
     (u.emailId && u.emailId.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (isUserLoading || !adminUser) {
+  if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Loading...</p>
+        <p>Redirecting to login...</p>
       </div>
     );
   }
@@ -117,60 +192,137 @@ export default function AdminPage() {
           <LogOut className="mr-2 h-4 w-4" /> Logout
         </Button>
       </header>
-
-      <Card>
-        <CardHeader className='flex-row items-center justify-between'>
-          <CardTitle>User Management</CardTitle>
-          <div className='flex items-center gap-2'>
-            <p className='text-sm text-muted-foreground'>Total Users: {filteredUsers?.length || 0}</p>
-            <Button size="icon" variant="ghost" onClick={() => window.location.reload()}>
-                <RefreshCw className='h-4 w-4' />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Input 
-            placeholder="Search by name, phone, or email ID..." 
-            className="max-w-sm mb-4"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          {isLoading && !users ? (<p>Loading users...</p>) : (
-            <>
-            {error && <p className="text-destructive">Error: {error.message}</p>}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Email ID</TableHead>
-                  <TableHead>Balance</TableHead>
-                  <TableHead>Join Date</TableHead>
-                  <TableHead className='text-right'>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers?.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell>
-                      <div className="font-medium">{u.name || 'N/A'}</div>
-                      <div className="text-sm text-muted-foreground">{u.phone}</div>
-                    </TableCell>
-                    <TableCell>{u.emailId}</TableCell>
-                    <TableCell>₹{(Number(u.balance) || 0).toFixed(2)}</TableCell>
-                    <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                        <BalanceDialog user={u}>
-                            <Button size="sm">Edit Balance</Button>
-                        </BalanceDialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      
+      <Tabs defaultValue="users">
+        <TabsList className="mb-4">
+          <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="deposits">Deposit Requests</TabsTrigger>
+          <TabsTrigger value="withdrawals">Withdrawal Requests</TabsTrigger>
+        </TabsList>
+        <TabsContent value="users">
+            <Card>
+                <CardHeader className='flex-row items-center justify-between'>
+                <CardTitle>All Users</CardTitle>
+                <div className='flex items-center gap-2'>
+                    <p className='text-sm text-muted-foreground'>Total Users: {filteredUsers?.length || 0}</p>
+                    <Button size="icon" variant="ghost" onClick={forceRefresh}>
+                        <RefreshCw className='h-4 w-4' />
+                    </Button>
+                </div>
+                </CardHeader>
+                <CardContent>
+                <Input 
+                    placeholder="Search by name, phone, or email ID..." 
+                    className="max-w-sm mb-4"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                {isLoadingUsers ? (<p>Loading users...</p>) : (
+                    <>
+                    {usersError && <p className="text-destructive">Error: Could not load users. Check security rules.</p>}
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead>User</TableHead>
+                        <TableHead>Email ID</TableHead>
+                        <TableHead>Balance</TableHead>
+                        <TableHead>Join Date</TableHead>
+                        <TableHead className='text-right'>Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredUsers?.map((u) => (
+                        <TableRow key={u.id}>
+                            <TableCell>
+                            <div className="font-medium">{u.name || 'N/A'}</div>
+                            <div className="text-sm text-muted-foreground">{u.phone}</div>
+                            </TableCell>
+                            <TableCell>{u.emailId}</TableCell>
+                            <TableCell>₹{(Number(u.balance) || 0).toFixed(2)}</TableCell>
+                            <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
+                            <TableCell className="text-right">
+                                <BalanceDialog user={u} onUpdate={forceRefresh} />
+                            </TableCell>
+                        </TableRow>
+                        ))}
+                    </TableBody>
+                    </Table>
+                    </>
+                )}
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="deposits">
+           <Card>
+                <CardHeader>
+                    <CardTitle>Pending Deposit Requests</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {isLoadingDeposits ? <p>Loading requests...</p> : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>User</TableHead>
+                                    <TableHead>Amount</TableHead>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {deposits.map(d => (
+                                    <TableRow key={d.id}>
+                                        <TableCell>{d.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{d.userId}</span></TableCell>
+                                        <TableCell>₹{d.amount.toFixed(2)}</TableCell>
+                                        <TableCell>{new Date(d.requestedAt).toLocaleString()}</TableCell>
+                                        <TableCell className="text-right space-x-2">
+                                            <Button size="sm" variant="outline" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'approved')}>Approve</Button>
+                                            <Button size="sm" variant="destructive" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'rejected')}>Reject</Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="withdrawals">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Pending Withdrawal Requests</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {isLoadingWithdrawals ? <p>Loading requests...</p> : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>User</TableHead>
+                                    <TableHead>Amount</TableHead>
+                                    <TableHead>UPI/Bank</TableHead>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {withdrawals.map(w => (
+                                    <TableRow key={w.id}>
+                                        <TableCell>{w.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{w.userId}</span></TableCell>
+                                        <TableCell>₹{w.amount.toFixed(2)}</TableCell>
+                                        <TableCell>{w.upiBank}</TableCell>
+                                        <TableCell>{new Date(w.requestedAt).toLocaleString()}</TableCell>
+                                        <TableCell className="text-right space-x-2">
+                                            <Button size="sm" variant="outline" onClick={() => handleRequest('withdrawal', w.id, w.userId, w.amount, 'approved')}>Approve</Button>
+                                            <Button size="sm" variant="destructive" onClick={() => handleRequest('withdrawal', w.id, w.userId, w.amount, 'rejected')}>Reject</Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </CardContent>
+            </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

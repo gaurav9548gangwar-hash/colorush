@@ -44,7 +44,7 @@ export default function WithdrawDialog() {
     }
 
     try {
-      const withdrawalsRef = collection(firestore, `users/${user.uid}/withdrawals`);
+      const withdrawalsRef = collection(firestore, `withdrawals`);
       await addDocumentNonBlocking(withdrawalsRef, {
         userId: user.uid,
         amount: Number(amount),

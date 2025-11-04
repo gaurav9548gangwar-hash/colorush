@@ -1,7 +1,7 @@
+
 {
   "entities": {
     "User": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
       "description": "Represents a user in the Tiranga game.",
@@ -28,329 +28,107 @@
         },
         "createdAt": {
           "type": "string",
-          "description": "Timestamp of when the user account was created.",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Timestamp of when the user account was created."
         }
       },
-      "required": [
-        "id",
-        "phone",
-        "emailId",
-        "balance",
-        "createdAt"
-      ]
+      "required": ["id", "phone", "emailId", "balance", "createdAt"]
     },
     "GameRound": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "GameRound",
       "type": "object",
       "description": "Represents a single round of a game.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the game round."
-        },
-        "gameType": {
-          "type": "string",
-          "description": "Type of game (e.g., wingo1, wingo3)."
-        },
-        "startTime": {
-          "type": "string",
-          "description": "Timestamp of when the game round started.",
-          "format": "date-time"
-        },
-        "resultNumber": {
-          "type": "number",
-          "description": "The winning number for the round (0-9)."
-        },
-        "resultColor": {
-          "type": "string",
-          "description": "The winning color for the round (green, orange, white)."
-        },
-        "status": {
-          "type": "string",
-          "description": "Status of the game round (betting, locked, finished)."
-        }
+        "id": { "type": "string", "description": "Unique identifier for the game round." },
+        "gameType": { "type": "string", "description": "Type of game (e.g., wingo1, wingo3)." },
+        "startTime": { "type": "string", "format": "date-time", "description": "Timestamp of when the game round started." },
+        "resultNumber": { "type": "number", "description": "The winning number for the round (0-9)." },
+        "resultColor": { "type": "string", "description": "The winning color for the round (green, orange, white)." },
+        "status": { "type": "string", "description": "Status of the game round (betting, locked, finished)." }
       },
-      "required": [
-        "id",
-        "gameType",
-        "startTime",
-        "resultNumber",
-        "resultColor",
-        "status"
-      ]
+      "required": ["id", "gameType", "startTime", "resultNumber", "resultColor", "status"]
     },
     "Bet": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Bet",
       "type": "object",
       "description": "Represents a user's bet on a game round.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the bet."
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to User. (Relationship: User 1:N Bet)"
-        },
-        "roundId": {
-          "type": "string",
-          "description": "Reference to GameRound. (Relationship: GameRound 1:N Bet)"
-        },
-        "choice": {
-          "type": "string",
-          "description": "The user's bet choice (e.g., color:green, number:5, big)."
-        },
-        "amount": {
-          "type": "number",
-          "description": "The amount the user bet."
-        },
-        "multiplier": {
-          "type": "number",
-          "description": "The multiplier applied to the bet."
-        },
-        "won": {
-          "type": "boolean",
-          "description": "Indicates whether the user won the bet."
-        },
-        "payout": {
-          "type": "number",
-          "description": "The payout amount if the user won."
-        }
+        "id": { "type": "string", "description": "Unique identifier for the bet." },
+        "userId": { "$ref": "#/entities/User" },
+        "roundId": { "$ref": "#/entities/GameRound" },
+        "choice": { "type": "string", "description": "The user's bet choice (e.g., color:green, number:5, big)." },
+        "amount": { "type": "number", "description": "The amount the user bet." },
+        "multiplier": { "type": "number", "description": "The multiplier applied to the bet." },
+        "won": { "type": "boolean", "description": "Indicates whether the user won the bet." },
+        "payout": { "type": "number", "description": "The payout amount if the user won." }
       },
-      "required": [
-        "id",
-        "userId",
-        "roundId",
-        "choice",
-        "amount",
-        "multiplier",
-        "won",
-        "payout"
-      ]
+      "required": ["id", "userId", "roundId", "choice", "amount", "multiplier", "won", "payout"]
     },
     "Deposit": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Deposit",
       "type": "object",
       "description": "Represents a user's deposit request.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the deposit request."
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to User. (Relationship: User 1:N Deposit)"
-        },
-        "amount": {
-          "type": "number",
-          "description": "The amount the user wants to deposit."
-        },
-        "status": {
-          "type": "string",
-          "description": "Status of the deposit request (pending, approved, rejected)."
-        },
-        "screenshotUrl": {
-          "type": "string",
-          "description": "URL of the deposit screenshot."
-        },
-        "requestedAt": {
-          "type": "string",
-          "description": "Timestamp of when the deposit was requested.",
-          "format": "date-time"
-        }
+        "id": { "type": "string", "description": "Unique identifier for the deposit request." },
+        "userId": { "$ref": "#/entities/User" },
+        "amount": { "type": "number", "description": "The amount the user wants to deposit." },
+        "status": { "type": "string", "description": "Status of the deposit request (pending, approved, rejected)." },
+        "screenshotUrl": { "type": "string", "description": "URL of the deposit screenshot." },
+        "requestedAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the deposit was requested." }
       },
-      "required": [
-        "id",
-        "userId",
-        "amount",
-        "status",
-        "screenshotUrl",
-        "requestedAt"
-      ]
+      "required": ["id", "userId", "amount", "status", "screenshotUrl", "requestedAt"]
     },
     "Withdrawal": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Withdrawal",
       "type": "object",
       "description": "Represents a user's withdrawal request.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the withdrawal request."
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to User. (Relationship: User 1:N Withdrawal)"
-        },
-        "amount": {
-          "type": "number",
-          "description": "The amount the user wants to withdraw."
-        },
-        "upiBank": {
-          "type": "string",
-          "description": "UPI or Bank Details for withdrawal."
-        },
-        "status": {
-          "type": "string",
-          "description": "Status of the withdrawal request (pending, approved, rejected)."
-        },
-        "requestedAt": {
-          "type": "string",
-          "description": "Timestamp of when the withdrawal was requested.",
-          "format": "date-time"
-        }
+        "id": { "type": "string", "description": "Unique identifier for the withdrawal request." },
+        "userId": { "$ref": "#/entities/User" },
+        "amount": { "type": "number", "description": "The amount the user wants to withdraw." },
+        "upiBank": { "type": "string", "description": "UPI or Bank Details for withdrawal." },
+        "status": { "type": "string", "description": "Status of the withdrawal request (pending, approved, rejected)." },
+        "requestedAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the withdrawal was requested." }
       },
-      "required": [
-        "id",
-        "userId",
-        "amount",
-        "upiBank",
-        "status",
-        "requestedAt"
-      ]
+      "required": ["id", "userId", "amount", "upiBank", "status", "requestedAt"]
     },
     "Admin": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Admin",
       "type": "object",
-      "description": "Represents the administrator user.",
+      "description": "Represents an administrator user role.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the admin user."
-        },
-        "masterAdminUid": {
-          "type": "string",
-          "description": "The Firebase UID of the master admin."
-        }
+        "uid": { "type": "string", "description": "The Firebase UID of the user with admin role." }
       },
-      "required": [
-        "id",
-        "masterAdminUid"
-      ]
+      "required": ["uid"]
     }
   },
   "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
+    "providers": ["password", "anonymous"]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "schema": {
-            "$ref": "#/backend/entities/User"
-          },
-          "description": "Stores user profiles. Uses path-based ownership for data privacy.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier for the user."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/game_rounds/{gameId}",
-        "definition": {
-          "entityName": "GameRound",
-          "schema": {
-            "$ref": "#/backend/entities/GameRound"
-          },
-          "description": "Stores information about each game round. No user-specific data is stored here.",
-          "params": [
-            {
-              "name": "gameId",
-              "description": "The unique identifier for the game round (e.g., wingo1_20240318011208)."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/users/{userId}/bets/{betId}",
-        "definition": {
-          "entityName": "Bet",
-          "schema": {
-            "$ref": "#/backend/entities/Bet"
-          },
-          "description": "Stores bets placed by users. Uses path-based ownership to ensure only the user can access their bets.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier for the user who placed the bet."
-            },
-            {
-              "name": "betId",
-              "description": "The unique identifier for the bet."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/users/{userId}/deposits/{depositId}",
-        "definition": {
-          "entityName": "Deposit",
-          "schema": {
-            "$ref": "#/backend/entities/Deposit"
-          },
-          "description": "Stores deposit requests made by users. Uses path-based ownership for data privacy.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier for the user who made the deposit request."
-            },
-            {
-              "name": "depositId",
-              "description": "The unique identifier for the deposit request."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/users/{userId}/withdrawals/{withdrawalId}",
-        "definition": {
-          "entityName": "Withdrawal",
-          "schema": {
-            "$ref": "#/backend/entities/Withdrawal"
-          },
-          "description": "Stores withdrawal requests made by users. Uses path-based ownership for data privacy.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier for the user who made the withdrawal request."
-            },
-            {
-              "name": "withdrawalId",
-              "description": "The unique identifier for the withdrawal request."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/roles_admin/{adminId}",
-        "definition": {
-          "entityName": "Admin",
-          "schema": {
-            "$ref": "#/backend/entities/Admin"
-          },
-          "description": "Stores admin user IDs. Uses existence-based rules to grant admin privileges.",
-          "params": [
-            {
-              "name": "adminId",
-              "description": "The unique identifier for the admin user (same as userId)."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "The Firestore data structure is designed to support the Tiranga color prediction game, focusing on user data, game rounds, bets, deposits, withdrawals, and admin functionalities. The structure prioritizes Authorization Independence by avoiding hierarchical `get()` calls in security rules. Path-based ownership is used for user-related data (bets, deposits, withdrawals), and dedicated collections are used for game rounds and admin roles. This segregation ensures clear security postures and efficient list operations (QAPs). The design enforces structural segregation, access modeling (path-based ownership, existence-based global roles), and data clarity using explicit state modeling."
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles. Path-based ownership ensures data privacy."
+    },
+    "/game_rounds/{gameId}": {
+      "schema": { "$ref": "#/entities/GameRound" },
+      "description": "Publicly accessible information about each game round."
+    },
+    "/deposits/{depositId}": {
+      "schema": { "$ref": "#/entities/Deposit" },
+      "description": "Centralized collection for all user deposit requests. Admins have access, users can only create."
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": { "$ref": "#/entities/Withdrawal" },
+      "description": "Centralized collection for all user withdrawal requests. Admins have access, users can only create."
+    },
+    "/users/{userId}/bets/{betId}": {
+      "schema": { "$ref": "#/entities/Bet" },
+      "description": "Stores bets placed by users. Path-based ownership restricts access."
+    },
+    "/roles_admin/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Maps user UIDs to admin roles. Existence of a document grants admin privileges."
+    }
   }
 }

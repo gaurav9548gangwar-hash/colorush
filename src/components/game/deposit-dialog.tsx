@@ -45,7 +45,7 @@ export default function DepositDialog() {
     }
 
     try {
-      const depositsRef = collection(firestore, `users/${user.uid}/deposits`);
+      const depositsRef = collection(firestore, `deposits`);
       await addDocumentNonBlocking(depositsRef, {
         userId: user.uid,
         amount: Number(amount),

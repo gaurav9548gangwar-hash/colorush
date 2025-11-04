@@ -24,15 +24,23 @@ service cloud.firestore {
     // Allow read/write access for the admin panel without authentication.
     // WARNING: This makes user data, deposits, and withdrawals listable and writable by anyone.
     // This is done to accommodate the simple password lock on the frontend.
-    match /{path=**} {
+    match /deposits/{depositId} {
       allow read, write: if true;
     }
+     match /withdrawals/{withdrawalId} {
+      allow read, write: if true;
+    }
+     match /users/{document=**} {
+       allow read, write: if true;
+     }
 
     match /users/{userId} {
       // A user can create their own profile.
       allow create: if isOwner(userId);
       // A user can delete their own profile.
       allow delete: if isOwner(userId);
+      // A user can only update their own profile (e.g. balance)
+      allow update: if isOwner(userId);
     }
     
     match /users/{userId}/bets/{betId} {

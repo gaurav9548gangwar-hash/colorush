@@ -12,12 +12,13 @@ import {
 } from "../ui/table";
 import { Badge } from "../ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
 import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
@@ -26,16 +27,21 @@ import { useFirebase, addDocumentNonBlocking } from "@/firebase";
 import { collection, serverTimestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-type BetChoice = {
-  type: "color" | "number" | "size";
-  value: string | number;
+type BetSelection = {
+  color: "green" | "white" | "orange" | null;
+  number: number | null;
+  size: "big" | "small" | null;
 };
 
 export default function GameArea() {
-  const [betChoice, setBetChoice] = useState<BetChoice | null>(null);
+  const [selection, setSelection] = useState<BetSelection>({
+    color: null,
+    number: null,
+    size: null,
+  });
   const [betAmount, setBetAmount] = useState(10);
-  const [isBetDialogOpen, setIsBetDialogOpen] = useState(false);
   const [pastResults, setPastResults] = useState<GameResult[]>([]);
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
@@ -51,35 +57,45 @@ export default function GameArea() {
     setPastResults(DUMMY_RESULTS);
   }, []);
 
-  const openBetDialog = (choice: BetChoice) => {
-    setBetChoice(choice);
-    setIsBetDialogOpen(true);
+  const handleSelection = <K extends keyof BetSelection>(
+    type: K,
+    value: BetSelection[K]
+  ) => {
+    setSelection((prev) => ({
+      ...prev,
+      [type]: prev[type] === value ? null : value, // Toggle selection
+    }));
   };
+  
+  const isBetReady = selection.color !== null && selection.number !== null && selection.size !== null && betAmount > 0;
 
   const handlePlaceBet = async () => {
-    if (!user || !firestore || !betChoice) {
+    if (!user || !firestore) {
       toast({ variant: "destructive", title: "Please log in to place a bet." });
       return;
     }
-    if (betAmount <= 0) {
-      toast({ variant: "destructive", title: "Invalid bet amount." });
-      return;
+    if (!isBetReady) {
+       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color, number, size, and amount." });
+       return;
     }
 
     try {
       const betsRef = collection(firestore, `users/${user.uid}/bets`);
+      const betChoice = `color:${selection.color},number:${selection.number},size:${selection.size}`;
+
       await addDocumentNonBlocking(betsRef, {
         userId: user.uid,
         roundId: "wingo1_current_round", // This should be dynamic
-        choice: `${betChoice.type}:${betChoice.value}`,
+        choice: betChoice,
         amount: betAmount,
         multiplier: 1, // This should be based on game rules
         won: false, // Will be updated later
         payout: 0,
         createdAt: serverTimestamp(),
       });
-      toast({ title: "Bet Placed!", description: `You bet ₹${betAmount} on ${betChoice.value}` });
-      setIsBetDialogOpen(false);
+      toast({ title: "Bet Placed!", description: `Your bet of ₹${betAmount} has been placed.` });
+      // Reset selections
+      setSelection({ color: null, number: null, size: null });
       setBetAmount(10);
     } catch (error) {
       console.error("Error placing bet:", error);
@@ -101,54 +117,125 @@ export default function GameArea() {
         </div>
       </div>
 
-      {/* Betting Options */}
-      <div className="space-y-4">
-        {/* Color Bets */}
-        <div className="grid grid-cols-3 gap-4">
-          <Button variant="green" className="h-20 text-2xl" onClick={() => openBetDialog({ type: 'color', value: 'green' })}>
-            Green
-          </Button>
-          <Button variant="white" className="h-20 text-2xl" onClick={() => openBetDialog({ type: 'color', value: 'white' })}>
-            White
-          </Button>
-          <Button variant="orange" className="h-20 text-2xl" onClick={() => openBetDialog({ type: 'color', value: 'orange' })}>
-            Orange
-          </Button>
-        </div>
+      {/* Betting UI */}
+      <Card className="bg-background/30 border-primary/50">
+        <CardHeader>
+          <CardTitle>Place Your Bet</CardTitle>
+          <CardDescription>Follow the steps to place your bet for the next round.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Step 1: Color */}
+          <div className="space-y-2">
+            <Label className="text-base">1. Choose Color</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                variant={selection.color === 'green' ? 'default' : 'green'}
+                className={cn("h-16 text-xl", selection.color === 'green' && 'ring-2 ring-offset-2 ring-primary')}
+                onClick={() => handleSelection('color', 'green')}
+              >
+                Green
+              </Button>
+              <Button
+                variant={selection.color === 'white' ? 'default' : 'white'}
+                className={cn("h-16 text-xl", selection.color === 'white' && 'ring-2 ring-offset-2 ring-primary')}
+                onClick={() => handleSelection('color', 'white')}
+              >
+                White
+              </Button>
+              <Button
+                variant={selection.color === 'orange' ? 'default' : 'orange'}
+                className={cn("h-16 text-xl", selection.color === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
+                onClick={() => handleSelection('color', 'orange')}
+              >
+                Orange
+              </Button>
+            </div>
+          </div>
 
-        {/* Number Bets */}
-        <div className="grid grid-cols-5 gap-2">
-          {Array.from({ length: 10 }, (_, i) => {
-            const colors = ["orange", "green", "orange", "green", "orange", "green", "orange", "green", "orange", "green"];
-            const isWhite = i === 0 || i === 5;
-            let colorClass = '';
-            if (isWhite) {
-              colorClass = 'bg-white text-purple-700 border-2 border-purple-500 hover:bg-gray-100 shadow-[0_0_10px_theme(colors.purple.400)]';
-            } else if (colors[i] === 'green') {
-              colorClass = 'bg-green-500 text-white hover:bg-green-600';
-            } else {
-              colorClass = 'bg-orange-500 text-white hover:bg-orange-600';
-            }
-            
-            return (
-                <Button
-                    key={i}
-                    size="circle"
-                    className={`h-12 w-12 text-xl font-bold ${colorClass}`}
-                    onClick={() => openBetDialog({ type: 'number', value: i })}
-                >
-                    {i}
-                </Button>
-            );
-        })}
-        </div>
+          {/* Step 2: Number */}
+           <div className="space-y-2">
+            <Label className="text-base">2. Choose Number</Label>
+             <div className="grid grid-cols-5 gap-2">
+                {Array.from({ length: 10 }, (_, i) => {
+                    const colors = ["orange", "green", "orange", "green", "orange", "green", "orange", "green", "orange", "green"];
+                    const isWhite = i === 0 || i === 5;
+                    let colorClass = '';
+                    if (isWhite) {
+                        colorClass = 'bg-white text-purple-700 border-2 border-purple-500 hover:bg-gray-100 shadow-[0_0_10px_theme(colors.purple.400)]';
+                    } else if (colors[i] === 'green') {
+                        colorClass = 'bg-green-500 text-white hover:bg-green-600';
+                    } else {
+                        colorClass = 'bg-orange-500 text-white hover:bg-orange-600';
+                    }
+                    
+                    return (
+                        <Button
+                            key={i}
+                            size="circle"
+                            className={cn('h-12 w-12 text-xl font-bold', colorClass, selection.number === i && 'ring-2 ring-offset-2 ring-primary')}
+                            onClick={() => handleSelection('number', i)}
+                        >
+                            {i}
+                        </Button>
+                    );
+                })}
+            </div>
+          </div>
 
-        {/* Size Bets */}
-        <div className="grid grid-cols-2 gap-4">
-            <Button variant="secondary" className="h-16 text-xl" onClick={() => openBetDialog({ type: 'size', value: 'small' })}>Small</Button>
-            <Button variant="secondary" className="h-16 text-xl" onClick={() => openBetDialog({ type: 'size', value: 'big' })}>Big</Button>
-        </div>
-      </div>
+          {/* Step 3: Size */}
+          <div className="space-y-2">
+            <Label className="text-base">3. Choose Size</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={selection.size === 'small' ? 'default' : 'secondary'}
+                className={cn("h-14 text-xl", selection.size === 'small' && 'ring-2 ring-offset-2 ring-primary')}
+                onClick={() => handleSelection('size', 'small')}
+              >
+                Small
+              </Button>
+              <Button
+                variant={selection.size === 'big' ? 'default' : 'secondary'}
+                className={cn("h-14 text-xl", selection.size === 'big' && 'ring-2 ring-offset-2 ring-primary')}
+                onClick={() => handleSelection('size', 'big')}
+              >
+                Big
+              </Button>
+            </div>
+          </div>
+          
+          {/* Step 4: Amount */}
+          <div className="space-y-2">
+              <Label className="text-base">4. Choose Amount</Label>
+               <RadioGroup
+                defaultValue="10"
+                className="grid grid-cols-4 gap-2"
+                onValueChange={(value) => setBetAmount(Number(value))}
+                value={String(betAmount)}
+              >
+                {[10, 20, 30, 40].map((val) => (
+                  <div key={val} className="flex items-center space-x-2">
+                    <RadioGroupItem value={String(val)} id={`r${val}`} />
+                    <Label htmlFor={`r${val}`}>{val}</Label>
+                  </div>
+                ))}
+              </RadioGroup>
+              <Input 
+                type="number" 
+                value={betAmount} 
+                onChange={(e) => setBetAmount(Number(e.target.value))} 
+                placeholder="Or enter custom amount"
+                className="mt-2"
+              />
+          </div>
+
+        </CardContent>
+        <CardFooter>
+            <Button className="w-full h-14 text-xl" disabled={!isBetReady} onClick={handlePlaceBet}>
+                Place Bet
+            </Button>
+        </CardFooter>
+      </Card>
+
 
       {/* Past Results */}
       <div className="rounded-lg bg-background/30 p-4">
@@ -175,38 +262,6 @@ export default function GameArea() {
         </Table>
       </div>
 
-       {/* Bet Confirmation Dialog */}
-       <Dialog open={isBetDialogOpen} onOpenChange={setIsBetDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Place Bet on {betChoice?.value}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Label>Amount</Label>
-            <RadioGroup
-              defaultValue="10"
-              className="grid grid-cols-4 gap-2"
-              onValueChange={(value) => setBetAmount(Number(value))}
-            >
-              {[10, 50, 100, 500].map((val) => (
-                <div key={val} className="flex items-center space-x-2">
-                  <RadioGroupItem value={String(val)} id={`r${val}`} />
-                  <Label htmlFor={`r${val}`}>{val}</Label>
-                </div>
-              ))}
-            </RadioGroup>
-            <Input 
-              type="number" 
-              value={betAmount} 
-              onChange={(e) => setBetAmount(Number(e.target.value))} 
-              placeholder="Or enter amount"
-            />
-          </div>
-          <DialogFooter>
-            <Button onClick={handlePlaceBet}>Confirm Bet</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }

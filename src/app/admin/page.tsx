@@ -80,7 +80,7 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-  const { data: users, isLoading } = useCollection<User>(usersRef);
+  const { data: users, isLoading, error } = useCollection<User>(usersRef);
 
   useEffect(() => {
     if (!isUserLoading) {
@@ -141,6 +141,8 @@ export default function AdminPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
           {isLoading && !users ? (<p>Loading users...</p>) : (
+            <>
+            {error && <p className="text-destructive">Error: {error.message}</p>}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -170,6 +172,7 @@ export default function AdminPage() {
                 ))}
               </TableBody>
             </Table>
+            </>
           )}
         </CardContent>
       </Card>

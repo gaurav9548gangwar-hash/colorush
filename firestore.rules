@@ -51,13 +51,16 @@ service cloud.firestore {
       function isExistingOwner(userId) {
         return isOwner(userId) && resource != null;
       }
+       function isAdmin() {
+          return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+        }
 
-      allow get: if isOwner(userId);
-      allow list: if false; // User listing is not permitted.
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin(); // Allow admins to list users.
 
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id; // Enforce immutability of userId.
-      allow delete: if isExistingOwner(userId);
+      allow update: if (isExistingOwner(userId) || isAdmin()) && request.resource.data.id == resource.data.id; // Enforce immutability of userId.
+      allow delete: if isExistingOwner(userId) || isAdmin();
     }
 
     /**

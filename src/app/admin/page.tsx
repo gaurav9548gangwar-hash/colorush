@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCollection } from '@/firebase/firestore/use-collection'
-import { collection, doc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { collection, doc, getDocs, query, updateDoc, writeBatch } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, Deposit, Withdrawal } from '@/lib/types'
+import { signOut } from 'firebase/auth'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -78,24 +79,20 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
   );
 }
 
-const ADMIN_UID = 'ADMIN_LOCK_USER'; // Special UID for lock system
 
 export default function AdminPage() {
-  const { firestore } = useFirebase();
+  const { firestore, auth, user, isUserLoading } = useFirebase();
   const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [key, setKey] = useState(0); // State to force re-render/re-fetch
   const { toast } = useToast();
 
   useEffect(() => {
-    const authStatus = sessionStorage.getItem('isAdminAuthenticated');
-    if (authStatus !== 'true') {
+    // Redirect to login if user is not authenticated or not the admin
+    if (!isUserLoading && (!user || user.email !== 'admin@tiranga.in')) {
       router.replace('/admin/login');
-    } else {
-      setIsAuthenticated(true);
     }
-  }, [router]);
+  }, [user, isUserLoading, router]);
 
   const forceRefresh = () => setKey(prevKey => prevKey + 1);
   
@@ -108,7 +105,7 @@ export default function AdminPage() {
   const [isLoadingWithdrawals, setIsLoadingWithdrawals] = useState(true);
 
   useEffect(() => {
-    if (!firestore || !isAuthenticated) return;
+    if (!firestore || !user) return;
 
     const fetchRequests = async () => {
       // Fetch all users first to map them to requests
@@ -116,40 +113,55 @@ export default function AdminPage() {
 
       // Fetch Deposits
       setIsLoadingDeposits(true);
-      const depositQuery = query(collection(firestore, 'deposits'));
+      const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
       const depositSnap = await getDocs(depositQuery);
       const depositData = depositSnap.docs.map(d => ({ ...d.data(), id: d.id } as Deposit))
-        .map(dep => ({ ...dep, user: userList.find(u => u.id === dep.userId) }))
-        .filter(dep => dep.status === 'pending');
+        .map(dep => ({ ...dep, user: userList.find(u => u.id === dep.userId) }));
       setDeposits(depositData);
       setIsLoadingDeposits(false);
 
       // Fetch Withdrawals
       setIsLoadingWithdrawals(true);
-      const withdrawalQuery = query(collection(firestore, 'withdrawals'));
+      const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
       const withdrawalSnap = await getDocs(withdrawalQuery);
       const withdrawalData = withdrawalSnap.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal))
-       .map(wd => ({ ...wd, user: userList.find(u => u.id === wd.userId) }))
-       .filter(wd => wd.status === 'pending');
+       .map(wd => ({ ...wd, user: userList.find(u => u.id === wd.userId) }));
       setWithdrawals(withdrawalData);
       setIsLoadingWithdrawals(false);
     };
 
-    fetchRequests();
-  }, [firestore, isAuthenticated, users, key]);
+    // We fetch requests only when the `users` data is available to map user info
+    if(users) {
+      fetchRequests();
+    }
+  }, [firestore, user, users, key]);
 
   const handleRequest = async (type: 'deposit' | 'withdrawal', requestId: string, userId: string, amount: number, action: 'approved' | 'rejected') => {
     if (!firestore) return;
 
     const requestRef = doc(firestore, `${type}s`, requestId);
     const userRef = doc(firestore, 'users', userId);
+    const currentUserData = users?.find(u => u.id === userId);
+
+    if (!currentUserData) {
+        toast({ variant: 'destructive', title: 'Error', description: 'User not found.' });
+        return;
+    }
 
     try {
       const batch = writeBatch(firestore);
+      const currentBalance = currentUserData.balance || 0;
 
-      if (action === 'approved' && type === 'deposit') {
-        const currentBalance = users?.find(u => u.id === userId)?.balance || 0;
-        batch.update(userRef, { balance: currentBalance + amount });
+      if (action === 'approved') {
+        if (type === 'deposit') {
+          batch.update(userRef, { balance: currentBalance + amount });
+        } else { // withdrawal
+           if(currentBalance < amount) {
+                toast({ variant: 'destructive', title: 'Insufficient Balance', description: `User only has ₹${currentBalance.toFixed(2)}.` });
+                return;
+           }
+           batch.update(userRef, { balance: currentBalance - amount });
+        }
       }
       
       batch.update(requestRef, { status: action });
@@ -164,9 +176,11 @@ export default function AdminPage() {
   };
 
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('isAdminAuthenticated');
-    router.push("/admin/login");
+  const handleLogout = async () => {
+    if (auth) {
+      await signOut(auth);
+      router.push("/admin/login");
+    }
   };
 
   const filteredUsers = users?.filter(u => 
@@ -175,10 +189,10 @@ export default function AdminPage() {
     (u.emailId && u.emailId.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (!isAuthenticated) {
+  if (isUserLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Redirecting to login...</p>
+        <p>Loading Admin Panel...</p>
       </div>
     );
   }
@@ -219,7 +233,7 @@ export default function AdminPage() {
                 />
                 {isLoadingUsers ? (<p>Loading users...</p>) : (
                     <>
-                    {usersError && <p className="text-destructive">Error: Could not load users. Check security rules.</p>}
+                    {usersError && <p className="text-destructive">Error: Could not load users. Check security rules and console.</p>}
                     <Table>
                     <TableHeader>
                         <TableRow>
@@ -273,7 +287,7 @@ export default function AdminPage() {
                                     <TableRow key={d.id}>
                                         <TableCell>{d.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{d.userId}</span></TableCell>
                                         <TableCell>₹{d.amount.toFixed(2)}</TableCell>
-                                        <TableCell>{new Date(d.requestedAt).toLocaleString()}</TableCell>
+                                        <TableCell>{d.requestedAt ? new Date(d.requestedAt).toLocaleString() : 'N/A'}</TableCell>
                                         <TableCell className="text-right space-x-2">
                                             <Button size="sm" variant="outline" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'approved')}>Approve</Button>
                                             <Button size="sm" variant="destructive" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'rejected')}>Reject</Button>
@@ -309,7 +323,7 @@ export default function AdminPage() {
                                         <TableCell>{w.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{w.userId}</span></TableCell>
                                         <TableCell>₹{w.amount.toFixed(2)}</TableCell>
                                         <TableCell>{w.upiBank}</TableCell>
-                                        <TableCell>{new Date(w.requestedAt).toLocaleString()}</TableCell>
+                                        <TableCell>{w.requestedAt ? new Date(w.requestedAt).toLocaleString() : 'N/A'}</TableCell>
                                         <TableCell className="text-right space-x-2">
                                             <Button size="sm" variant="outline" onClick={() => handleRequest('withdrawal', w.id, w.userId, w.amount, 'approved')}>Approve</Button>
                                             <Button size="sm" variant="destructive" onClick={() => handleRequest('withdrawal', w.id, w.userId, w.amount, 'rejected')}>Reject</Button>

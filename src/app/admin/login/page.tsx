@@ -7,7 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
+import { useFirebase } from '@/firebase'
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth'
 
+const ADMIN_EMAIL = 'admin@tiranga.in'
 const ADMIN_PASSWORD = 'gaurav@9548'
 
 export default function AdminLoginPage() {
@@ -15,29 +18,67 @@ export default function AdminLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
+  const { auth } = useFirebase()
 
   useEffect(() => {
-    // If user is already authenticated, redirect to admin page
-    if (sessionStorage.getItem('isAdminAuthenticated') === 'true') {
-      router.replace('/admin')
-    }
-  }, [router])
+    if (!auth) return;
+    // Check if an admin is already logged in
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && user.email === ADMIN_EMAIL) {
+        router.replace('/admin');
+      }
+    });
+    return () => unsubscribe();
+  }, [auth, router]);
 
-  const handleLogin = (e: React.FormEvent) => {
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    
+    if (password !== ADMIN_PASSWORD) {
+        toast({
+            variant: 'destructive',
+            title: 'Login Failed',
+            description: 'The password you entered is incorrect.',
+        })
+        setIsSubmitting(false)
+        return;
+    }
 
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem('isAdminAuthenticated', 'true')
-      toast({ title: 'Login Successful' })
-      router.push('/admin')
-    } else {
-      toast({
-        variant: 'destructive',
-        title: 'Login Failed',
-        description: 'The password you entered is incorrect.',
-      })
-      setIsSubmitting(false)
+    if (!auth) {
+        toast({ variant: 'destructive', title: 'Firebase not available'})
+        setIsSubmitting(false)
+        return;
+    }
+
+    try {
+        await signInWithEmailAndPassword(auth, ADMIN_EMAIL, password);
+        toast({ title: 'Login Successful' });
+        router.push('/admin');
+    } catch (error: any) {
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+            // If user does not exist or credentials wrong (can happen if password changed), create it
+            try {
+                await createUserWithEmailAndPassword(auth, ADMIN_EMAIL, password);
+                toast({ title: 'Admin account created. Logging in.' });
+                router.push('/admin');
+            } catch (creationError: any) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Account Creation Failed',
+                    description: creationError.message,
+                });
+            }
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Login Failed',
+                description: error.message,
+            });
+        }
+    } finally {
+        setIsSubmitting(false);
     }
   }
 

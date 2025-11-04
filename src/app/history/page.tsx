@@ -1,21 +1,25 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/game/header';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import type { Deposit, Withdrawal } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 
 export default function HistoryPage() {
   const { user, firestore, isUserLoading } = useFirebase();
   const router = useRouter();
+
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [isLoadingDeposits, setIsLoadingDeposits] = useState(true);
+  const [isLoadingWithdrawals, setIsLoadingWithdrawals] = useState(true);
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -23,17 +27,39 @@ export default function HistoryPage() {
     }
   }, [user, isUserLoading, router]);
 
-  const depositsRef = useMemoFirebase(
-    () => (user ? query(collection(firestore, 'deposits'), where('userId', '==', user.uid)) : null),
-    [user, firestore]
-  );
-  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsRef);
+  useEffect(() => {
+    if (!firestore || !user) return;
 
-  const withdrawalsRef = useMemoFirebase(
-    () => (user ? query(collection(firestore, 'withdrawals'), where('userId', '==', user.uid)) : null),
-    [user, firestore]
-  );
-  const { data: withdrawals, isLoading: isLoadingWithdrawals } = useCollection<Withdrawal>(withdrawalsRef);
+    const fetchHistory = async () => {
+      // Fetch Deposits
+      setIsLoadingDeposits(true);
+      const depositQuery = query(collection(firestore, 'deposits'), where('userId', '==', user.uid));
+      try {
+        const depositSnap = await getDocs(depositQuery);
+        const depositData = depositSnap.docs.map(d => ({ ...d.data(), id: d.id } as Deposit));
+        setDeposits(depositData.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
+      } catch (e) {
+          console.error("Failed to fetch deposits", e);
+      } finally {
+        setIsLoadingDeposits(false);
+      }
+      
+      // Fetch Withdrawals
+      setIsLoadingWithdrawals(true);
+      const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('userId', '==', user.uid));
+      try {
+          const withdrawalSnap = await getDocs(withdrawalQuery);
+          const withdrawalData = withdrawalSnap.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal));
+          setWithdrawals(withdrawalData.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
+      } catch(e) {
+          console.error("Failed to fetch withdrawals", e);
+      } finally {
+        setIsLoadingWithdrawals(false);
+      }
+    };
+
+    fetchHistory();
+  }, [firestore, user]);
   
   const getStatusBadgeVariant = (status: 'pending' | 'approved' | 'rejected') => {
     switch (status) {

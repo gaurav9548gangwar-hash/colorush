@@ -12,7 +12,7 @@ export type Deposit = {
   id: string;
   userId: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'pending_upload' | 'upload_failed';
   requestedAt: string;
   user?: User; // Optional: To hold merged user data
   screenshotUrl: string;

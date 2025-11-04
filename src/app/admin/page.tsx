@@ -113,12 +113,19 @@ export default function AdminPage() {
     if (!firestore || isAuthenticating) return;
   
     const fetchUserDataForRequests = async (requests: (Deposit | Withdrawal)[]) => {
+      const userCache = new Map<string, User>();
+
       const requestsWithUsers = await Promise.all(
         requests.map(async (req) => {
+          if (userCache.has(req.userId)) {
+            return { ...req, user: userCache.get(req.userId) };
+          }
           try {
             const userDoc = await getDoc(doc(firestore, 'users', req.userId));
             if (userDoc.exists()) {
-              return { ...req, user: userDoc.data() as User };
+              const userData = userDoc.data() as User;
+              userCache.set(req.userId, userData);
+              return { ...req, user: userData };
             }
           } catch (e) {
             console.error(`Failed to fetch user ${req.userId}`, e);
@@ -134,7 +141,7 @@ export default function AdminPage() {
     
     // Real-time listener for Deposits
     setIsLoadingDeposits(true);
-    const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
+    const depositQuery = query(collection(firestore, 'deposits'), where('status', 'in', ['pending', 'pending_upload']));
     depositUnsubscribe = onSnapshot(depositQuery, async (snapshot) => {
         const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit));
         const depositsWithUsers = await fetchUserDataForRequests(depositData);
@@ -179,12 +186,15 @@ export default function AdminPage() {
 
     const requestRef = doc(firestore, `${type}s`, requestId);
     const userRef = doc(firestore, 'users', userId);
-    const currentUserData = users?.find(u => u.id === userId);
+    const userDoc = await getDoc(userRef);
 
-    if (!currentUserData) {
+
+    if (!userDoc.exists()) {
         toast({ variant: 'destructive', title: 'Error', description: 'User not found.' });
         return;
     }
+    const currentUserData = userDoc.data() as User;
+
 
     try {
       const batch = writeBatch(firestore);
@@ -325,11 +335,17 @@ export default function AdminPage() {
                                         <TableCell>{d.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{d.userId}</span></TableCell>
                                         <TableCell>₹{d.amount.toFixed(2)}</TableCell>
                                         <TableCell>
-                                            <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View</a>
+                                            {d.screenshotUrl ? (
+                                                <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View</a>
+                                            ) : d.status === 'pending_upload' ? (
+                                                <span className="text-muted-foreground text-xs">Uploading...</span>
+                                            ) : (
+                                                <span className="text-destructive text-xs">Missing</span>
+                                            )}
                                         </TableCell>
                                         <TableCell>{d.requestedAt ? new Date(d.requestedAt).toLocaleString() : 'N/A'}</TableCell>
                                         <TableCell className="text-right space-x-2">
-                                            <Button size="sm" variant="outline" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'approved')}>Approve</Button>
+                                            <Button size="sm" variant="outline" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'approved')} disabled={!d.screenshotUrl}>Approve</Button>
                                             <Button size="sm" variant="destructive" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'rejected')}>Reject</Button>
                                         </TableCell>
                                     </TableRow>

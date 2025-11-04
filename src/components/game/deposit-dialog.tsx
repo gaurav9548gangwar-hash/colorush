@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { useFirebase } from "@/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { Copy, Loader2 } from "lucide-react";
@@ -43,76 +43,84 @@ export default function DepositDialog() {
       setScreenshotFile(e.target.files[0]);
     }
   };
+  
+  const resetForm = () => {
+    setAmount('');
+    setScreenshotFile(null);
+    // This is a bit of a hack to reset the file input visually
+    const fileInput = document.getElementById('screenshot') as HTMLInputElement;
+    if(fileInput) fileInput.value = '';
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !firestore || !storage) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "You must be logged in to make a deposit.",
-      });
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
       return;
     }
-    
     if (Number(amount) < 200) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Amount",
-        description: "Minimum deposit amount is ₹200.",
-      });
+      toast({ variant: "destructive", title: "Invalid Amount", description: "Minimum deposit is ₹200." });
       return;
     }
-
     if (!screenshotFile) {
-      toast({
-        variant: "destructive",
-        title: "Screenshot Required",
-        description: "Please upload a payment screenshot.",
-      });
+      toast({ variant: "destructive", title: "Screenshot Required", description: "Please upload a payment screenshot." });
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-        const fileId = uuidv4();
-        const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
+        // --- Fire and Forget Upload ---
         
-        // Step 1: Upload the file
-        const uploadResult = await uploadBytes(storageRef, screenshotFile);
-        
-        // Step 2: Get the download URL
-        const screenshotUrl = await getDownloadURL(uploadResult.ref);
-
-        // Step 3: Create the document in Firestore
+        // 1. Instantly create the Firestore document with a placeholder status
         const depositsRef = collection(firestore, 'deposits');
-        await addDoc(depositsRef, {
+        const newDepositDoc = await addDoc(depositsRef, {
             userId: user.uid,
             amount: Number(amount),
-            status: "pending",
+            status: "pending_upload", // New status: waiting for screenshot
             requestedAt: new Date().toISOString(),
-            screenshotUrl: screenshotUrl,
+            screenshotUrl: "", // Empty for now
         });
 
+        // 2. Give instant feedback to the user and close the dialog
         toast({
-            title: "Request Submitted",
-            description: "Your deposit request is being processed. It will reflect in your wallet upon approval.",
+            title: "Request Submitted!",
+            description: "Your deposit request is being processed.",
         });
-        
         setOpen(false);
-        setAmount('');
-        setScreenshotFile(null);
+        resetForm();
+        
+        // 3. Start the upload in the background (don't await it here)
+        const uploadTask = async () => {
+            try {
+                const fileId = uuidv4();
+                const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
+                const uploadResult = await uploadBytes(storageRef, screenshotFile);
+                const screenshotUrl = await getDownloadURL(uploadResult.ref);
+
+                // 4. Update the document with the real URL and final pending status
+                await updateDoc(newDepositDoc, {
+                    screenshotUrl: screenshotUrl,
+                    status: "pending",
+                });
+            } catch (uploadError) {
+                console.error("Background upload failed:", uploadError);
+                // Optionally update the doc to show a failure state
+                await updateDoc(newDepositDoc, { status: 'upload_failed' });
+            }
+        };
+
+        uploadTask(); // Fire the upload task without awaiting
 
     } catch (error) {
-        console.error("Error submitting deposit request:", error);
+        console.error("Error submitting initial deposit request:", error);
         toast({
             variant: "destructive",
             title: "Submission Failed",
             description: "Could not submit your deposit request. Please try again.",
         });
     } finally {
-        setIsSubmitting(false);
+        setIsSubmitting(false); // Instantly reset submitting state
     }
   };
 

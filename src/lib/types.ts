@@ -33,7 +33,21 @@ export type GameResult = {
   gameId: string;
   resultNumber: number;
   resultColor: 'green' | 'orange' | 'white';
+  startTime?: string;
+  status?: string;
 };
+
+export type Bet = {
+    id: string;
+    userId: string;
+    roundId: string;
+    choice: string;
+    amount: number;
+    status: 'pending' | 'win' | 'loss';
+    won: boolean;
+    payout: number;
+    createdAt: any; // serverTimestamp will be an object
+}
 
 // Legacy types for dummy data, can be removed later
 export type DepositRequest = {

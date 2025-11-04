@@ -13,10 +13,12 @@ type GamePhase = "betting" | "locked" | "result";
 
 export default function CountdownTimer({ 
   onRoundEnd,
-  onNewRound
+  onNewRound,
+  roundId,
 }: { 
   onRoundEnd: (result: GameResult) => void;
   onNewRound: () => void;
+  roundId: string;
 }) {
   const [totalSeconds, setTotalSeconds] = useState(TOTAL_DURATION);
   const [phase, setPhase] = useState<GamePhase>("betting");
@@ -50,15 +52,15 @@ export default function CountdownTimer({
          const resultNumber = Math.floor(Math.random() * 10);
          const resultColor = ['green', 'orange', 'white'][Math.floor(Math.random() * 3)] as 'green' | 'orange' | 'white';
          onRoundEnd({
-            id: `res_${Date.now()}`,
-            gameId: 'current_game_id', // This should be dynamic in a real app
+            id: roundId,
+            gameId: roundId, 
             resultNumber,
             resultColor
          });
       }
       setPhase("result");
     }
-  }, [totalSeconds, onRoundEnd, phase]);
+  }, [totalSeconds, onRoundEnd, phase, roundId]);
 
 
   const getDisplayTime = () => {

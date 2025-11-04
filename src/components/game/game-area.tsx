@@ -23,10 +23,10 @@ import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
-import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { collection, serverTimestamp, doc, updateDoc } from "firebase/firestore";
+import { useFirebase, useDoc, useMemoFirebase, useCollection, addDocumentNonBlocking } from "@/firebase";
+import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import type { GameResult, User } from "@/lib/types";
+import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type BetSelection = {
@@ -42,10 +42,10 @@ export default function GameArea() {
     size: null,
   });
   const [betAmount, setBetAmount] = useState(10);
-  const [pastResults, setPastResults] = useState<GameResult[]>([]);
-  const [currentBet, setCurrentBet] = useState<{ amount: number; color: string } | null>(null);
+  const [currentBet, setCurrentBet] = useState<{ id: string, amount: number; color: string } | null>(null);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [showResultEmoji, setShowResultEmoji] = useState<'win' | 'loss' | null>(null);
+  const [currentRoundId, setCurrentRoundId] = useState(`round_${Date.now()}`);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
@@ -56,35 +56,17 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
-
-  // Add new results to the top
-  const addResult = (result: GameResult) => {
-    setPastResults(prev => [result, ...prev.slice(0, 9)]);
-  };
+  // Live Past Game Results
+  const gameRoundsRef = useMemoFirebase(() => firestore ? query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10)) : null, [firestore]);
+  const { data: pastResults } = useCollection<GameResult>(gameRoundsRef);
   
-  useEffect(() => {
-    // Generate dummy data on the client side to avoid hydration errors
-    if (pastResults.length === 0) {
-      const DUMMY_RESULTS: GameResult[] = Array.from({ length: 10 }, (_, i) => ({
-        id: `g${i}`,
-        gameId: `wingo1_2024031801120${9 - i}`,
-        resultNumber: Math.floor(Math.random() * 10),
-        resultColor: ['green', 'orange', 'white'][Math.floor(Math.random() * 3)] as 'green' | 'orange' | 'white',
-      }));
-      setPastResults(DUMMY_RESULTS);
-    }
-  }, [pastResults.length]);
+  // Live User Bets
+  const userBetsRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return query(collection(firestore, 'users', user.uid, 'bets'), orderBy('createdAt', 'desc'), limit(10));
+  }, [user, firestore]);
+  const { data: userBets } = useCollection<Bet>(userBetsRef);
 
-  const handleSelection = <K extends keyof BetSelection>(
-    type: K,
-    value: BetSelection[K]
-  ) => {
-    setSelection((prev) => ({
-      ...prev,
-      [type]: prev[type] === value ? null : value, // Toggle selection
-    }));
-  };
-  
   const isBetReady = selection.color !== null && selection.number !== null && selection.size !== null && betAmount > 0;
 
   const handlePlaceBet = async () => {
@@ -102,41 +84,64 @@ export default function GameArea() {
     }
 
     try {
-      // Deduct bet amount immediately
+      // 1. Deduct bet amount immediately
       const newBalance = userData.balance - betAmount;
       await updateDoc(userRef!, { balance: newBalance });
 
-      // Store current bet to check for win/loss later
-      setCurrentBet({ amount: betAmount, color: selection.color! });
+      // 2. Create a new bet document in Firestore
+      const betsRef = collection(firestore, 'users', user.uid, 'bets');
+      const betDoc = await addDocumentNonBlocking(betsRef, {
+        userId: user.uid,
+        roundId: currentRoundId,
+        choice: `color:${selection.color},number:${selection.number},size:${selection.size}`,
+        amount: betAmount,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        payout: 0,
+        won: false,
+      });
+      
+      if(!betDoc) {
+        throw new Error("Could not get bet document reference.");
+      }
+
+      // 3. Store current bet to check for win/loss later
+      setCurrentBet({ id: betDoc.id, amount: betAmount, color: selection.color! });
 
       toast({ title: "Bet Placed!", description: `₹${betAmount} deducted from your wallet.` });
-      // Reset selections for next round
+      // 4. Reset selections for next round
       setSelection({ color: null, number: null, size: null });
       setBetAmount(10);
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
+      // Revert balance if bet placement fails
+      if(userRef) await updateDoc(userRef, { balance: userData.balance });
     }
   };
   
   const handleRoundEnd = async (result: GameResult) => {
     setGameResult(result);
-    addResult(result);
+    if (!firestore) return;
 
-    if (currentBet && user && firestore) {
+    // Save the game round result to Firestore
+    const roundDocRef = doc(firestore, 'game_rounds', result.id);
+    addDocumentNonBlocking(collection(firestore, 'game_rounds'), { ...result, startTime: new Date().toISOString(), status: 'finished' });
+
+    if (currentBet && user && firestore && userData) {
+      const betDocRef = doc(firestore, 'users', user.uid, 'bets', currentBet.id);
       if (currentBet.color === result.resultColor) {
         // WIN
         setShowResultEmoji('win');
         const winnings = currentBet.amount * 2;
-        const userDocRef = doc(firestore, 'users', user.uid);
-        // We need the most recent balance, so we can't use the stale `userData`
-        const currentBalance = (await (await fetch(userDocRef.path).then(res => res.json())).data() as User)?.balance ?? 0;
-        const newBalance = (userData?.balance || 0) + winnings;
-        await updateDoc(userDocRef, { balance: newBalance });
+        const newBalance = userData.balance + winnings;
+        await updateDoc(userRef!, { balance: newBalance });
+        await updateDoc(betDocRef, { status: 'win', won: true, payout: winnings });
         toast({ title: "You Won!", description: `₹${winnings} has been added to your wallet.`});
       } else {
         // LOSS
         setShowResultEmoji('loss');
+        await updateDoc(betDocRef, { status: 'loss', won: false, payout: 0 });
         toast({ title: "You Lost!", variant: 'destructive'});
       }
     }
@@ -151,6 +156,7 @@ export default function GameArea() {
     setCurrentBet(null);
     setGameResult(null);
     setShowResultEmoji(null);
+    setCurrentRoundId(`round_${Date.now()}`);
   }
 
   return (
@@ -169,10 +175,10 @@ export default function GameArea() {
       <div className="flex items-center justify-between p-4 rounded-lg bg-background/30">
         <div>
           <p className="text-sm text-gray-400">Win Go 1 Min</p>
-          <p className="text-lg font-bold">20240318011210</p>
+          <p className="text-lg font-bold">{currentRoundId}</p>
         </div>
         <div className="text-right">
-          <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} />
+          <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} roundId={currentRoundId} />
         </div>
       </div>
       
@@ -312,6 +318,38 @@ export default function GameArea() {
       </Card>
 
 
+      {/* My Bets History */}
+      <div className="rounded-lg bg-background/30 p-4">
+        <h3 className="font-bold mb-2">My Bets</h3>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Round ID</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Payout</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {userBets?.map((bet) => (
+              <TableRow key={bet.id}>
+                <TableCell>{bet.roundId}</TableCell>
+                <TableCell>₹{bet.amount.toFixed(2)}</TableCell>
+                <TableCell>
+                   <Badge variant={bet.status === 'win' ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
+                        {bet.status}
+                    </Badge>
+                </TableCell>
+                <TableCell className="text-right text-green-400">
+                    {bet.status === 'win' ? `+₹${bet.payout.toFixed(2)}` : '₹0.00'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+
       {/* Past Results */}
       <div className="rounded-lg bg-background/30 p-4">
         <h3 className="font-bold mb-2">Past Results</h3>
@@ -323,9 +361,9 @@ export default function GameArea() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pastResults.map((result) => (
+            {pastResults?.map((result) => (
               <TableRow key={result.id}>
-                <TableCell>{result.gameId}</TableCell>
+                <TableCell>{result.id}</TableCell>
                 <TableCell className="text-right">
                   <Badge style={{ backgroundColor: result.resultColor === 'white' ? 'white' : result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
                     {result.resultNumber}

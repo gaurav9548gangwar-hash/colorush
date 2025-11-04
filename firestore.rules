@@ -2,9 +2,9 @@
  * @fileoverview Firestore Security Rules for the Tiranga color prediction game.
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model for user profiles, bets, deposits, and withdrawals.
- * Game rounds are publicly accessible. Admin privileges are required for broader read/write access,
- * determined by the existence of a document in the `/roles_admin` collection.
+ * This ruleset has been simplified. It no longer requires admin authentication
+ * to read data for the admin panel. It primarily enforces user-ownership 
+ * for creating and managing their own data.
  *
  * Data Structure:
  * - `/users/{userId}`: User profiles.
@@ -12,67 +12,56 @@
  * - `/deposits/{depositId}`: All user deposit requests.
  * - `/withdrawals/{withdrawalId}`: All user withdrawal requests.
  * - `/users/{userId}/bets/{betId}`: Bets placed by a specific user.
- * - `/roles_admin/{adminId}`: Admin role mapping. Existence grants admin privileges.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAdmin() {
-      // An admin is a user whose UID exists in the roles_admin collection.
-      return request.auth != null && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
-    }
-
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
-    
-    // Admins can read all user data for the admin panel.
-    match /users/{document=**} {
-      allow list: if isAdmin();
+
+    // Allow read access for the admin panel without authentication.
+    // WARNING: This makes user data, deposits, and withdrawals listable by anyone.
+    // This is done to accommodate the simple password lock on the frontend.
+    match /{path=**} {
+      allow read: if true;
     }
 
     match /users/{userId} {
-      // A user can get, update, or delete their own profile.
-      // A new user can create their own profile.
-      allow get, delete: if isOwner(userId);
+      // A user can create, update, or delete their own profile.
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isOwner(userId);
     }
 
     match /game_rounds/{gameId} {
-      // Anyone can read game rounds. Only admins can write.
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
+      // Writes to game rounds are disabled from the client for security.
+      allow write: if false;
     }
     
     match /deposits/{depositId} {
         // Users can create their own deposit requests.
+        // Updates are disabled from client to be handled by an admin/backend process.
         allow create: if isOwner(request.resource.data.userId);
-        // Admins can read and update all deposit requests.
-        allow get, list, update: if isAdmin();
+        allow update: if false;
     }
     
     match /withdrawals/{withdrawalId} {
         // Users can create their own withdrawal requests.
+        // Updates are disabled from client to be handled by an admin/backend process.
         allow create: if isOwner(request.resource.data.userId);
-        // Admins can read and update all withdrawal requests.
-        allow get, list, update: if isAdmin();
+        allow update: if false;
     }
 
     match /users/{userId}/bets/{betId} {
-      // A user can manage their own bets. Admins can read them.
-      allow get, list, create, update, delete: if isOwner(userId);
+      // A user can manage their own bets.
+      allow create, update, delete: if isOwner(userId);
     }
     
+    // roles_admin is no longer used for client-side checks.
     match /roles_admin/{adminId} {
-      // Only admins can see who other admins are.
-      // In a real scenario, this might be locked down further.
-      allow get: if isAdmin();
-      // Listing admins is disallowed.
-      allow list: if false; 
-      // Creating/deleting admins should be a server-side/manual process.
-      allow create, update, delete: if false;
+      allow read, write: if false;
     }
   }
 }

@@ -3,10 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCollection } from '@/firebase/firestore/use-collection'
-import { collection, doc, getDocs, query, updateDoc, writeBatch } from 'firebase/firestore'
+import { collection, doc, getDocs, query, updateDoc, writeBatch, where } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, Deposit, Withdrawal } from '@/lib/types'
-import { signOut } from 'firebase/auth'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -81,18 +80,21 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
 
 
 export default function AdminPage() {
-  const { firestore, auth, user, isUserLoading } = useFirebase();
+  const { firestore } = useFirebase();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [key, setKey] = useState(0); // State to force re-render/re-fetch
   const { toast } = useToast();
+  const [isAuthenticating, setIsAuthenticating] = useState(true);
 
   useEffect(() => {
-    // Redirect to login if user is not authenticated or not the admin
-    if (!isUserLoading && (!user || user.email !== 'admin@tiranga.in')) {
+    // Check if the user is logged in via session storage
+    if (sessionStorage.getItem('isAdminLoggedIn') !== 'true') {
       router.replace('/admin/login');
+    } else {
+      setIsAuthenticating(false);
     }
-  }, [user, isUserLoading, router]);
+  }, [router]);
 
   const forceRefresh = () => setKey(prevKey => prevKey + 1);
   
@@ -105,7 +107,7 @@ export default function AdminPage() {
   const [isLoadingWithdrawals, setIsLoadingWithdrawals] = useState(true);
 
   useEffect(() => {
-    if (!firestore || !user) return;
+    if (!firestore || isAuthenticating) return;
 
     const fetchRequests = async () => {
       // Fetch all users first to map them to requests
@@ -129,12 +131,11 @@ export default function AdminPage() {
       setWithdrawals(withdrawalData);
       setIsLoadingWithdrawals(false);
     };
-
-    // We fetch requests only when the `users` data is available to map user info
+    
     if(users) {
       fetchRequests();
     }
-  }, [firestore, user, users, key]);
+  }, [firestore, isAuthenticating, users, key]);
 
   const handleRequest = async (type: 'deposit' | 'withdrawal', requestId: string, userId: string, amount: number, action: 'approved' | 'rejected') => {
     if (!firestore) return;
@@ -175,12 +176,9 @@ export default function AdminPage() {
     }
   };
 
-
-  const handleLogout = async () => {
-    if (auth) {
-      await signOut(auth);
-      router.push("/admin/login");
-    }
+  const handleLogout = () => {
+    sessionStorage.removeItem('isAdminLoggedIn');
+    router.push("/admin/login");
   };
 
   const filteredUsers = users?.filter(u => 
@@ -189,14 +187,13 @@ export default function AdminPage() {
     (u.emailId && u.emailId.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (isUserLoading || !user) {
+  if (isAuthenticating) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p>Loading Admin Panel...</p>
       </div>
     );
   }
-
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
@@ -233,7 +230,7 @@ export default function AdminPage() {
                 />
                 {isLoadingUsers ? (<p>Loading users...</p>) : (
                     <>
-                    {usersError && <p className="text-destructive">Error: Could not load users. Check security rules and console.</p>}
+                    {usersError && <p className="text-destructive">Error: {usersError.message}. Check security rules and console.</p>}
                     <Table>
                     <TableHeader>
                         <TableRow>

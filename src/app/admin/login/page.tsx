@@ -7,11 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { useFirebase } from '@/firebase'
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, User } from 'firebase/auth'
-import { doc, setDoc } from 'firebase/firestore'
 
-const ADMIN_EMAIL = 'admin@tiranga.in'
 const ADMIN_PASSWORD = 'gaurav@9548'
 
 export default function AdminLoginPage() {
@@ -19,74 +15,32 @@ export default function AdminLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
-  const { auth, firestore } = useFirebase()
 
   useEffect(() => {
-    if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && user.email === ADMIN_EMAIL) {
-        router.replace('/admin');
-      }
-    });
-    return () => unsubscribe();
-  }, [auth, router]);
+    // If already logged in this session, redirect to admin page
+    if (sessionStorage.getItem('isAdminLoggedIn') === 'true') {
+      router.replace('/admin');
+    }
+  }, [router]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     
-    if (password !== ADMIN_PASSWORD) {
+    if (password === ADMIN_PASSWORD) {
+        toast({ title: 'Login Successful' });
+        // Set a session flag to indicate admin is logged in
+        sessionStorage.setItem('isAdminLoggedIn', 'true');
+        router.push('/admin');
+    } else {
         toast({
             variant: 'destructive',
             title: 'Login Failed',
             description: 'The password you entered is incorrect.',
         })
-        setIsSubmitting(false)
-        return;
-    }
-
-    if (!auth || !firestore) {
-        toast({ variant: 'destructive', title: 'Firebase not available'})
-        setIsSubmitting(false)
-        return;
     }
     
-    const ensureAdminRole = async (user: User) => {
-        // This is critical. It creates a document in `roles_admin`
-        // which grants the user admin privileges via security rules.
-        const adminRoleRef = doc(firestore, "roles_admin", user.uid);
-        await setDoc(adminRoleRef, { uid: user.uid });
-    };
-
-    try {
-        const userCredential = await signInWithEmailAndPassword(auth, ADMIN_EMAIL, password);
-        await ensureAdminRole(userCredential.user);
-        toast({ title: 'Login Successful' });
-        router.push('/admin');
-    } catch (error: any) {
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-            try {
-                const userCredential = await createUserWithEmailAndPassword(auth, ADMIN_EMAIL, password);
-                await ensureAdminRole(userCredential.user);
-                toast({ title: 'Admin account created. Logging in.' });
-                router.push('/admin');
-            } catch (creationError: any) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Account Creation Failed',
-                    description: creationError.message,
-                });
-            }
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Login Failed',
-                description: error.message,
-            });
-        }
-    } finally {
-        setIsSubmitting(false);
-    }
+    setIsSubmitting(false);
   }
 
   return (

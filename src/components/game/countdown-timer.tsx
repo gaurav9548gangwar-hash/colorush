@@ -70,7 +70,7 @@ export default function CountdownTimer({
         secondsInPhase = totalSeconds - (LOCKED_DURATION + RESULT_DURATION);
         break;
       case 'locked':
-        secondsInPhase = totalSeconds - RESULT_duration;
+        secondsInPhase = totalSeconds - RESULT_DURATION;
         break;
       case 'result':
         secondsInPhase = totalSeconds;

@@ -14,15 +14,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import Image from 'next/image';
 import { useFirebase, addDocumentNonBlocking } from "@/firebase";
 import { collection } from "firebase/firestore";
+import { Copy } from "lucide-react";
 
 export default function DepositDialog() {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const { toast } = useToast();
   const { user, firestore } = useFirebase();
+  const UPI_ID = "colourtrest99955@ptyes";
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(UPI_ID);
+    toast({
+      title: "Copied!",
+      description: "UPI ID has been copied to your clipboard.",
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,11 +44,11 @@ export default function DepositDialog() {
       return;
     }
     
-    if (Number(amount) <= 0) {
+    if (Number(amount) < 200) {
       toast({
         variant: "destructive",
         title: "Invalid Amount",
-        description: "Please enter a valid deposit amount.",
+        description: "Minimum deposit amount is ₹200.",
       });
       return;
     }
@@ -52,7 +61,7 @@ export default function DepositDialog() {
         status: "pending",
         requestedAt: new Date().toISOString(),
         // In a real app, you would upload the screenshot and save the URL
-        screenshotUrl: "https://example.com/screenshot.jpg", 
+        screenshotUrl: "https://via.placeholder.com/150", 
       });
 
       toast({
@@ -80,35 +89,38 @@ export default function DepositDialog() {
         <DialogHeader>
           <DialogTitle>Make a Deposit</DialogTitle>
           <DialogDescription>
-            Scan the QR code to pay, then enter the amount below and submit your request.
+            Pay to the UPI ID below, then enter the amount and submit your request.
+            Minimum deposit is ₹200.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex justify-center">
-            <Image 
-                src="https://storage.googleapis.com/studio-bug-images-central1/290f6702-861c-4375-ab19-3f040224d557"
-                alt="QR Code for payment"
-                width={300}
-                height={400}
-                data-ai-hint="qr code"
-            />
+        <div className="space-y-2">
+            <Label>Our UPI ID</Label>
+            <div className="flex items-center space-x-2">
+                <Input type="text" value={UPI_ID} readOnly />
+                <Button type="button" size="icon" onClick={handleCopy}>
+                    <Copy className="h-4 w-4" />
+                </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Click the button to copy the UPI ID.</p>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="amount" className="text-right">
-                Amount
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="amount">
+                Amount Deposited
               </Label>
               <Input
                 id="amount"
                 type="number"
                 placeholder="Enter amount paid"
-                className="col-span-3"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
               />
             </div>
-          </div>
+             {/* We will add screenshot upload functionality in a future step */}
+            <p className="text-xs text-center text-muted-foreground pt-2">
+                After submitting, your request will be reviewed by our team.
+            </p>
           <DialogFooter>
             <Button type="submit">Submit Request</Button>
           </DialogFooter>

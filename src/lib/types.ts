@@ -15,6 +15,7 @@ export type Deposit = {
   status: 'pending' | 'approved' | 'rejected';
   requestedAt: string;
   user?: User; // Optional: To hold merged user data
+  screenshotUrl: string;
 };
 
 export type Withdrawal = {
@@ -68,4 +69,3 @@ export type WithdrawalRequest = {
   status: 'pending' | 'approved' | 'rejected';
   date: string;
 };
-

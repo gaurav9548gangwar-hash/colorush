@@ -1,15 +1,17 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, History } from "lucide-react";
 import { Button } from "../ui/button";
 import DepositDialog from "./deposit-dialog";
 import WithdrawDialog from "./withdraw-dialog";
 import { useDoc, useFirebase, useMemoFirebase } from "@/firebase";
 import { doc } from "firebase/firestore";
 import type { User } from "@/lib/types";
+import { useRouter } from "next/navigation";
 
 export default function Wallet() {
   const { user, firestore } = useFirebase();
+  const router = useRouter();
 
   const userRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -30,6 +32,9 @@ export default function Wallet() {
             </Button>
           </div>
         </div>
+        <Button variant="outline" onClick={() => router.push('/history')}>
+            <History className="mr-2 h-4 w-4" /> History
+        </Button>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <WithdrawDialog />

@@ -277,6 +277,7 @@ export default function AdminPage() {
                                 <TableRow>
                                     <TableHead>User</TableHead>
                                     <TableHead>Amount</TableHead>
+                                    <TableHead>Screenshot</TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
@@ -286,6 +287,9 @@ export default function AdminPage() {
                                     <TableRow key={d.id}>
                                         <TableCell>{d.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{d.userId}</span></TableCell>
                                         <TableCell>₹{d.amount.toFixed(2)}</TableCell>
+                                        <TableCell>
+                                            <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View</a>
+                                        </TableCell>
                                         <TableCell>{d.requestedAt ? new Date(d.requestedAt).toLocaleString() : 'N/A'}</TableCell>
                                         <TableCell className="text-right space-x-2">
                                             <Button size="sm" variant="outline" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'approved')}>Approve</Button>

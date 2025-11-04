@@ -36,6 +36,20 @@ type BetSelection = {
   size: "big" | "small" | null;
 };
 
+const numberButtonColors = [
+    'bg-red-500', 
+    'bg-green-500', 
+    'bg-blue-500', 
+    'bg-yellow-500', 
+    'bg-purple-500', 
+    'bg-pink-500', 
+    'bg-indigo-500', 
+    'bg-teal-500', 
+    'bg-lime-500', 
+    'bg-amber-500'
+];
+
+
 export default function GameArea() {
   const [selection, setSelection] = useState<BetSelection>({
     color: null,
@@ -239,7 +253,7 @@ export default function GameArea() {
             <div className="grid grid-cols-3 gap-2">
               <Button
                 variant={selection.color === 'green' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl", selection.color === 'green' && 'ring-2 ring-offset-2 ring-primary')}
+                className={cn("h-16 text-xl bg-green-500 hover:bg-green-600 text-white", selection.color === 'green' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'green')}
               >
                 Green
@@ -253,7 +267,7 @@ export default function GameArea() {
               </Button>
               <Button
                 variant={selection.color === 'orange' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl bg-orange-500 hover:bg-orange-600", selection.color === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
+                className={cn("h-16 text-xl bg-orange-500 hover:bg-orange-600 text-white", selection.color === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'orange')}
               >
                 Orange
@@ -270,11 +284,11 @@ export default function GameArea() {
                         <Button
                             key={i}
                             size="circle"
-                            variant={selection.number === i ? 'default' : 'secondary'}
-                            className={cn('h-12 w-12 text-xl font-bold', selection.number === i && 'ring-2 ring-offset-2 ring-primary')}
+                            variant={'secondary'}
+                            className={cn('h-12 w-12 text-xl font-bold text-white', numberButtonColors[i], selection.number === i && 'ring-2 ring-offset-2 ring-primary')}
                             onClick={() => handleSelection('number', i)}
                         >
-                            {i}
+                            {i}x
                         </Button>
                     );
                 })}
@@ -307,11 +321,11 @@ export default function GameArea() {
               <Label className="text-base">4. Choose Amount</Label>
                <RadioGroup
                 defaultValue="10"
-                className="grid grid-cols-4 gap-2"
+                className="grid grid-cols-5 gap-2"
                 onValueChange={(value) => setBetAmount(Number(value))}
                 value={String(betAmount)}
               >
-                {[10, 50, 100, 500].map((val) => (
+                {[10, 20, 30, 40, 50].map((val) => (
                   <div key={val} className="flex items-center space-x-2">
                     <RadioGroupItem value={String(val)} id={`r${val}`} />
                     <Label htmlFor={`r${val}`}>{val}</Label>
@@ -397,5 +411,4 @@ export default function GameArea() {
 
     </section>
   );
-
     

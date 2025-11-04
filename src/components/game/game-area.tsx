@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -24,7 +25,7 @@ import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase, useCollection, addDocumentNonBlocking } from "@/firebase";
-import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit } from "firebase/firestore";
+import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -42,13 +43,18 @@ export default function GameArea() {
     size: null,
   });
   const [betAmount, setBetAmount] = useState(10);
-  const [currentBet, setCurrentBet] = useState<{ id: string, amount: number; color: string } | null>(null);
+  const [currentBet, setCurrentBet] = useState<{ id: string, amount: number; color: string; choice: string; } | null>(null);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [showResultEmoji, setShowResultEmoji] = useState<'win' | 'loss' | null>(null);
-  const [currentRoundId, setCurrentRoundId] = useState(`round_${Date.now()}`);
+  const [currentRoundId, setCurrentRoundId] = useState<string>('');
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Generate the round ID on the client side to avoid hydration mismatch
+    setCurrentRoundId(`round_${Date.now()}`);
+  }, []);
 
   const userRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -67,7 +73,11 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userBets } = useCollection<Bet>(userBetsRef);
 
-  const isBetReady = selection.color !== null && selection.number !== null && selection.size !== null && betAmount > 0;
+  const handleSelection = (type: keyof BetSelection, value: any) => {
+    setSelection(prev => ({ ...prev, [type]: value }));
+  };
+
+  const isBetReady = selection.color !== null && betAmount > 0 && selection.number !== null && selection.size !== null;
 
   const handlePlaceBet = async () => {
     if (!user || !firestore || !userData) {
@@ -75,7 +85,7 @@ export default function GameArea() {
       return;
     }
     if (!isBetReady) {
-       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color, number, size, and amount." });
+       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color, number, and size." });
        return;
     }
     if (userData.balance < betAmount) {
@@ -86,27 +96,30 @@ export default function GameArea() {
     try {
       // 1. Deduct bet amount immediately
       const newBalance = userData.balance - betAmount;
-      await updateDoc(userRef!, { balance: newBalance });
+      if (userRef) {
+        await updateDoc(userRef, { balance: newBalance });
+      }
 
       // 2. Create a new bet document in Firestore
       const betsRef = collection(firestore, 'users', user.uid, 'bets');
-      const betDoc = await addDocumentNonBlocking(betsRef, {
+      const betChoice = `color:${selection.color},number:${selection.number},size:${selection.size}`;
+      const newBetRef = doc(collection(firestore, `users/${user.uid}/bets`));
+
+      const betData = {
         userId: user.uid,
         roundId: currentRoundId,
-        choice: `color:${selection.color},number:${selection.number},size:${selection.size}`,
+        choice: betChoice,
         amount: betAmount,
         status: 'pending',
         createdAt: serverTimestamp(),
         payout: 0,
         won: false,
-      });
-      
-      if(!betDoc) {
-        throw new Error("Could not get bet document reference.");
-      }
+      };
 
+      setDocumentNonBlocking(newBetRef, betData, {});
+      
       // 3. Store current bet to check for win/loss later
-      setCurrentBet({ id: betDoc.id, amount: betAmount, color: selection.color! });
+      setCurrentBet({ id: newBetRef.id, amount: betAmount, color: selection.color!, choice: betChoice });
 
       toast({ title: "Bet Placed!", description: `₹${betAmount} deducted from your wallet.` });
       // 4. Reset selections for next round
@@ -125,19 +138,34 @@ export default function GameArea() {
     if (!firestore) return;
 
     // Save the game round result to Firestore
-    const roundDocRef = doc(firestore, 'game_rounds', result.id);
     addDocumentNonBlocking(collection(firestore, 'game_rounds'), { ...result, startTime: new Date().toISOString(), status: 'finished' });
 
-    if (currentBet && user && firestore && userData) {
+    if (currentBet && user && firestore && userData && userRef) {
       const betDocRef = doc(firestore, 'users', user.uid, 'bets', currentBet.id);
-      if (currentBet.color === result.resultColor) {
+      
+      // Determine win condition based on the placed bet
+      const choiceParts = currentBet.choice.split(',');
+      const betColor = choiceParts.find(p => p.startsWith('color:'))?.split(':')[1];
+      
+      let isWin = false;
+      if (betColor === result.resultColor) {
+        isWin = true;
+      }
+      
+      if (isWin) {
         // WIN
         setShowResultEmoji('win');
-        const winnings = currentBet.amount * 2;
-        const newBalance = userData.balance + winnings;
-        await updateDoc(userRef!, { balance: newBalance });
+        const winnings = currentBet.amount * 2; // Simple double for color match
+        
+        // Re-fetch user data to avoid race conditions
+        const updatedUserResponse = await getDoc(userRef);
+        const updatedUserData = updatedUserResponse.data() as User;
+        
+        const newBalance = updatedUserData.balance + winnings;
+
+        await updateDoc(userRef, { balance: newBalance });
         await updateDoc(betDocRef, { status: 'win', won: true, payout: winnings });
-        toast({ title: "You Won!", description: `₹${winnings} has been added to your wallet.`});
+        toast({ title: "You Won!", description: `₹${winnings.toFixed(2)} has been added to your wallet.`});
       } else {
         // LOSS
         setShowResultEmoji('loss');
@@ -210,22 +238,22 @@ export default function GameArea() {
             <Label className="text-base">1. Choose Color</Label>
             <div className="grid grid-cols-3 gap-2">
               <Button
-                variant={selection.color === 'green' ? 'default' : 'green'}
+                variant={selection.color === 'green' ? 'default' : 'secondary'}
                 className={cn("h-16 text-xl", selection.color === 'green' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'green')}
               >
                 Green
               </Button>
               <Button
-                variant={selection.color === 'white' ? 'default' : 'white'}
-                className={cn("h-16 text-xl", selection.color === 'white' && 'ring-2 ring-offset-2 ring-primary')}
+                variant={selection.color === 'white' ? 'default' : 'secondary'}
+                className={cn("h-16 text-xl bg-gray-200 text-black hover:bg-gray-300", selection.color === 'white' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'white')}
               >
                 White
               </Button>
               <Button
-                variant={selection.color === 'orange' ? 'default' : 'orange'}
-                className={cn("h-16 text-xl", selection.color === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
+                variant={selection.color === 'orange' ? 'default' : 'secondary'}
+                className={cn("h-16 text-xl bg-orange-500 hover:bg-orange-600", selection.color === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'orange')}
               >
                 Orange
@@ -238,22 +266,12 @@ export default function GameArea() {
             <Label className="text-base">2. Choose Number</Label>
              <div className="grid grid-cols-5 gap-2">
                 {Array.from({ length: 10 }, (_, i) => {
-                    const colors = ["orange", "green", "orange", "green", "orange", "green", "orange", "green", "orange", "green"];
-                    const isWhite = i === 0 || i === 5;
-                    let colorClass = '';
-                    if (isWhite) {
-                        colorClass = 'bg-white text-purple-700 border-2 border-purple-500 hover:bg-gray-100 shadow-[0_0_10px_theme(colors.purple.400)]';
-                    } else if (colors[i] === 'green') {
-                        colorClass = 'bg-green-500 text-white hover:bg-green-600';
-                    } else {
-                        colorClass = 'bg-orange-500 text-white hover:bg-orange-600';
-                    }
-                    
                     return (
                         <Button
                             key={i}
                             size="circle"
-                            className={cn('h-12 w-12 text-xl font-bold', colorClass, selection.number === i && 'ring-2 ring-offset-2 ring-primary')}
+                            variant={selection.number === i ? 'default' : 'secondary'}
+                            className={cn('h-12 w-12 text-xl font-bold', selection.number === i && 'ring-2 ring-offset-2 ring-primary')}
                             onClick={() => handleSelection('number', i)}
                         >
                             {i}
@@ -293,7 +311,7 @@ export default function GameArea() {
                 onValueChange={(value) => setBetAmount(Number(value))}
                 value={String(betAmount)}
               >
-                {[10, 20, 30, 40].map((val) => (
+                {[10, 50, 100, 500].map((val) => (
                   <div key={val} className="flex items-center space-x-2">
                     <RadioGroupItem value={String(val)} id={`r${val}`} />
                     <Label htmlFor={`r${val}`}>{val}</Label>
@@ -305,7 +323,7 @@ export default function GameArea() {
                 value={betAmount} 
                 onChange={(e) => setBetAmount(Number(e.target.value))} 
                 placeholder="Or enter custom amount"
-                className="mt-2"
+                className="mt-2 bg-input"
               />
           </div>
 
@@ -325,6 +343,7 @@ export default function GameArea() {
           <TableHeader>
             <TableRow>
               <TableHead>Round ID</TableHead>
+              <TableHead>Choice</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Payout</TableHead>
@@ -333,7 +352,8 @@ export default function GameArea() {
           <TableBody>
             {userBets?.map((bet) => (
               <TableRow key={bet.id}>
-                <TableCell>{bet.roundId}</TableCell>
+                <TableCell className="text-xs">{bet.roundId}</TableCell>
+                <TableCell className="text-xs">{bet.choice}</TableCell>
                 <TableCell>₹{bet.amount.toFixed(2)}</TableCell>
                 <TableCell>
                    <Badge variant={bet.status === 'win' ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
@@ -363,9 +383,9 @@ export default function GameArea() {
           <TableBody>
             {pastResults?.map((result) => (
               <TableRow key={result.id}>
-                <TableCell>{result.id}</TableCell>
+                <TableCell className="text-xs">{result.id}</TableCell>
                 <TableCell className="text-right">
-                  <Badge style={{ backgroundColor: result.resultColor === 'white' ? 'white' : result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
+                   <Badge className="text-lg" style={{ backgroundColor: result.resultColor === 'white' ? 'white' : result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
                     {result.resultNumber}
                   </Badge>
                 </TableCell>
@@ -378,3 +398,5 @@ export default function GameArea() {
     </section>
   );
 }
+
+    

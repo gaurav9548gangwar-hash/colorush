@@ -138,7 +138,7 @@ export default function GameArea() {
     if (!firestore) return;
 
     // Save the game round result to Firestore
-    addDocumentNonBlocking(collection(firestore, 'game_rounds'), { ...result, startTime: new Date().toISOString(), status: 'finished' });
+    // addDocumentNonBlocking(collection(firestore, 'game_rounds'), { ...result, startTime: new Date().toISOString(), status: 'finished' });
 
     if (currentBet && user && firestore && userData && userRef) {
       const betDocRef = doc(firestore, 'users', user.uid, 'bets', currentBet.id);
@@ -397,4 +397,5 @@ export default function GameArea() {
 
     </section>
   );
-}
+
+    

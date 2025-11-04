@@ -26,19 +26,19 @@ export default function CountdownTimer({
   useEffect(() => {
     // Main interval for the round
     const interval = setInterval(() => {
-      setTotalSeconds((prev) => {
-        if (prev <= 1) {
-          // End of round, reset for a new one
-          clearInterval(interval);
-          onNewRound();
-          return TOTAL_DURATION;
-        }
-        return prev - 1;
-      });
+      setTotalSeconds((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [onNewRound]);
+  }, []);
+
+  useEffect(() => {
+    if (totalSeconds <= 0) {
+      onNewRound();
+      setTotalSeconds(TOTAL_DURATION);
+    }
+  }, [totalSeconds, onNewRound]);
+
 
   useEffect(() => {
     // Logic to determine the current phase and display time
@@ -70,7 +70,7 @@ export default function CountdownTimer({
         secondsInPhase = totalSeconds - (LOCKED_DURATION + RESULT_DURATION);
         break;
       case 'locked':
-        secondsInPhase = totalSeconds - RESULT_DURATION;
+        secondsInPhase = totalSeconds - RESULT_duration;
         break;
       case 'result':
         secondsInPhase = totalSeconds;

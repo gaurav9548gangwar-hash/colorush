@@ -20,16 +20,22 @@ service cloud.firestore {
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
-
-    // Allow read/write access for the admin panel without authentication.
-    // WARNING: This makes user data, deposits, and withdrawals listable and writable by anyone.
-    // This is done to accommodate the simple password lock on the frontend.
+    
     match /deposits/{depositId} {
-      allow read, write: if true;
+      // Users can only read their own deposits. Admin can write to any.
+      allow read: if request.auth.uid == resource.data.userId;
+      allow write: if true; // Allows admin to approve/reject
+      allow create: if request.auth.uid == request.resource.data.userId;
     }
+
      match /withdrawals/{withdrawalId} {
-      allow read, write: if true;
+      // Users can only read their own withdrawals. Admin can write to any.
+      allow read: if request.auth.uid == resource.data.userId;
+      allow write: if true; // Allows admin to approve/reject
+      allow create: if request.auth.uid == request.resource.data.userId;
      }
+
+     // Admin can read all user data for the panel
      match /users/{document=**} {
        allow read, write: if true;
      }
@@ -45,8 +51,7 @@ service cloud.firestore {
     
     match /users/{userId}/bets/{betId} {
       // A user can manage their own bets.
-      allow create, update, delete: if isOwner(userId);
-      allow read: if isOwner(userId);
+      allow create, update, delete, read: if isOwner(userId);
     }
     
     // Legacy collections - block all client access

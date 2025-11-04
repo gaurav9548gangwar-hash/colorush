@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -14,8 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { useFirebase, addDocumentNonBlocking } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { useFirebase } from "@/firebase";
+import { collection, addDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { Copy, Loader2 } from "lucide-react";
@@ -43,7 +44,7 @@ export default function DepositDialog() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !firestore || !storage) {
       toast({
@@ -74,40 +75,45 @@ export default function DepositDialog() {
 
     setIsSubmitting(true);
 
-    const fileId = uuidv4();
-    const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-    
-    uploadBytes(storageRef, screenshotFile)
-      .then(uploadResult => getDownloadURL(uploadResult.ref))
-      .then(screenshotUrl => {
-        const depositsRef = collection(firestore, `deposits`);
-        addDocumentNonBlocking(depositsRef, {
-          userId: user.uid,
-          amount: Number(amount),
-          status: "pending",
-          requestedAt: new Date().toISOString(),
-          screenshotUrl: screenshotUrl,
-        });
+    try {
+        const fileId = uuidv4();
+        const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
         
+        // Step 1: Upload the file
+        const uploadResult = await uploadBytes(storageRef, screenshotFile);
+        
+        // Step 2: Get the download URL
+        const screenshotUrl = await getDownloadURL(uploadResult.ref);
+
+        // Step 3: Create the document in Firestore
+        const depositsRef = collection(firestore, 'deposits');
+        await addDoc(depositsRef, {
+            userId: user.uid,
+            amount: Number(amount),
+            status: "pending",
+            requestedAt: new Date().toISOString(),
+            screenshotUrl: screenshotUrl,
+        });
+
         toast({
             title: "Request Submitted",
             description: "Your deposit request is being processed. It will reflect in your wallet upon approval.",
         });
+        
         setOpen(false);
         setAmount('');
         setScreenshotFile(null);
-      })
-      .catch(error => {
+
+    } catch (error) {
         console.error("Error submitting deposit request:", error);
         toast({
             variant: "destructive",
             title: "Submission Failed",
             description: "Could not submit your deposit request. Please try again.",
         });
-      })
-      .finally(() => {
+    } finally {
         setIsSubmitting(false);
-      });
+    }
   };
 
   return (

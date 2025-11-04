@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [isRegistered, setIsRegistered] = useState(false)
 
   const router = useRouter()
-  const { auth, firestore } = useFirebase()
+  const { auth, firestore } = useFirebase() // Use the hook to get Firebase instances
   const { toast } = useToast()
 
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function LoginPage() {
             </Button>
         )}
         <p className="mt-2">By continuing, you agree to our Terms of Service.</p>
-        <Button variant="link" size="sm" onClick={() => router.push('/admin')}>
+        <Button variant="link" size="sm" onClick={() => router.push('/admin/login')}>
             Admin Login
         </Button>
       </CardFooter>

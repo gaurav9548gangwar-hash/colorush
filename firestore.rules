@@ -8,7 +8,7 @@
  *
  * Data Structure:
  * - `/users/{userId}`: User profiles.
- * - `/game_rounds/{gameId}`: Publicly accessible information about game rounds.
+ * - `/game_rounds/{gameId}`: Publicly accessible information about each game round.
  * - `/deposits/{depositId}`: All user deposit requests.
  * - `/withdrawals/{withdrawalId}`: All user withdrawal requests.
  * - `/users/{userId}/bets/{betId}`: Bets placed by a specific user.
@@ -29,7 +29,7 @@ service cloud.firestore {
     }
      match /withdrawals/{withdrawalId} {
       allow read, write: if true;
-    }
+     }
      match /users/{document=**} {
        allow read, write: if true;
      }
@@ -46,13 +46,17 @@ service cloud.firestore {
     match /users/{userId}/bets/{betId} {
       // A user can manage their own bets.
       allow create, update, delete: if isOwner(userId);
+      allow read: if isOwner(userId);
     }
     
     // Legacy collections - block all client access
     match /roles_admin/{adminId} {
       allow read, write: if false;
     }
+
     match /game_rounds/{gameId} {
+      // Game rounds are public information and can be read by anyone.
+      allow read: if true;
       allow write: if false;
     }
   }

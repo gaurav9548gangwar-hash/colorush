@@ -23,14 +23,16 @@ service cloud.firestore {
     
     match /deposits/{depositId} {
       // Users can only read their own deposits. Admin can write to any.
-      allow read: if request.auth.uid == resource.data.userId;
+      allow get: if request.auth.uid == resource.data.userId;
+      allow list: if request.query.where.userId == request.auth.uid;
       allow write: if true; // Allows admin to approve/reject
       allow create: if request.auth.uid == request.resource.data.userId;
     }
 
      match /withdrawals/{withdrawalId} {
       // Users can only read their own withdrawals. Admin can write to any.
-      allow read: if request.auth.uid == resource.data.userId;
+      allow get: if request.auth.uid == resource.data.userId;
+      allow list: if request.query.where.userId == request.auth.uid;
       allow write: if true; // Allows admin to approve/reject
       allow create: if request.auth.uid == request.resource.data.userId;
      }

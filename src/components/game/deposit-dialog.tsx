@@ -78,12 +78,12 @@ export default function DepositDialog() {
       // 1. Upload screenshot to Firebase Storage
       const fileId = uuidv4();
       const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-      await uploadBytes(storageRef, screenshotFile);
-      const screenshotUrl = await getDownloadURL(storageRef);
+      const uploadResult = await uploadBytes(storageRef, screenshotFile);
+      const screenshotUrl = await getDownloadURL(uploadResult.ref);
 
       // 2. Submit deposit request to Firestore
       const depositsRef = collection(firestore, `deposits`);
-      await addDocumentNonBlocking(depositsRef, {
+      addDocumentNonBlocking(depositsRef, {
         userId: user.uid,
         amount: Number(amount),
         status: "pending",

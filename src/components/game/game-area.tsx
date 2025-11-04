@@ -24,8 +24,8 @@ import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
-import { useFirebase, useDoc, useMemoFirebase, useCollection, addDocumentNonBlocking } from "@/firebase";
-import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, setDoc } from "firebase/firestore";
+import { useFirebase, useDoc, useMemoFirebase, useCollection, addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase";
+import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -53,7 +53,7 @@ export default function GameArea() {
 
   useEffect(() => {
     // Generate the round ID on the client side to avoid hydration mismatch
-    setCurrentRoundId(`round_${Date.now()}`);
+    setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
 
   const userRef = useMemoFirebase(() => {
@@ -184,7 +184,7 @@ export default function GameArea() {
     setCurrentBet(null);
     setGameResult(null);
     setShowResultEmoji(null);
-    setCurrentRoundId(`round_${Date.now()}`);
+    setCurrentRoundId(`round_${new Date().getTime()}`);
   }
 
   return (
@@ -398,5 +398,3 @@ export default function GameArea() {
     </section>
   );
 }
-
-    

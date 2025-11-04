@@ -33,6 +33,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    // Grant admin the permission to list all documents in the 'users' collection.
+    match /users/{document=**} {
+      allow list: if isAdmin();
+    }
+
     /**
      * @description Grants access to user profile data.
      * @path /users/{userId}
@@ -42,22 +55,15 @@ service cloud.firestore {
      * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
       function isOwner(userId) {
         return isSignedIn() && request.auth.uid == userId;
       }
       function isExistingOwner(userId) {
         return isOwner(userId) && resource != null;
       }
-       function isAdmin() {
-          return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
-        }
 
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin(); // Allow admins to list users.
-
+      
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if (isExistingOwner(userId) || isAdmin()) && request.resource.data.id == resource.data.id; // Enforce immutability of userId.
       allow delete: if isExistingOwner(userId) || isAdmin();
@@ -72,12 +78,6 @@ service cloud.firestore {
      * @principle Allows public reads and restricts writes to admins.
      */
     match /game_rounds/{gameId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
-        function isAdmin() {
-          return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
-        }
       allow get, list: if true;
       allow create, update, delete: if isAdmin();
     }
@@ -90,9 +90,6 @@ service cloud.firestore {
      * @principle Enforces document ownership for all operations.
      */
     match /users/{userId}/bets/{betId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
         function isOwner(userId) {
           return isSignedIn() && request.auth.uid == userId;
         }
@@ -115,17 +112,11 @@ service cloud.firestore {
      * @principle Enforces document ownership for user creation and allows admin management.
      */
     match /users/{userId}/deposits/{depositId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
         function isOwner(userId) {
           return isSignedIn() && request.auth.uid == userId;
         }
         function isExistingOwner(userId) {
           return isOwner(userId) && resource != null;
-        }
-        function isAdmin() {
-          return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
         }
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isOwner(userId) || isAdmin();
@@ -143,17 +134,11 @@ service cloud.firestore {
      * @principle Enforces document ownership for user creation and allows admin management.
      */
     match /users/{userId}/withdrawals/{withdrawalId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
         function isOwner(userId) {
           return isSignedIn() && request.auth.uid == userId;
         }
         function isExistingOwner(userId) {
           return isOwner(userId) && resource != null;
-        }
-        function isAdmin() {
-          return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
         }
 
       allow get: if isOwner(userId) || isAdmin();
@@ -174,12 +159,6 @@ service cloud.firestore {
      * @principle Uses the existence of a document to define admin status.
      */
     match /roles_admin/{userId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
-        function isAdmin() {
-          return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
-        }
         function isOwner(userId) {
           return isSignedIn() && request.auth.uid == userId;
         }

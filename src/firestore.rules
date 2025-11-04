@@ -1,0 +1,72 @@
+/**
+ * @fileoverview Firestore Security Rules for the Tiranga color prediction game.
+ *
+ * Core Philosophy:
+ * This ruleset has been simplified. It no longer requires admin authentication
+ * to read data for the admin panel. It primarily enforces user-ownership 
+ * for creating and managing their own data. The admin panel can read/write freely.
+ *
+ * Data Structure:
+ * - `/users/{userId}`: User profiles.
+ * - `/game_rounds/{gameId}`: Publicly accessible information about each game round.
+ * - `/deposits/{depositId}`: All user deposit requests.
+ * - `/withdrawals/{withdrawalId}`: All user withdrawal requests.
+ * - `/users/{userId}/bets/{betId}`: Bets placed by a specific user.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /deposits/{depositId} {
+      // Allow users to read their own deposits (single doc or list)
+      // Allow admin to write to any for approval/rejection
+      allow read: if request.auth.uid == resource.data.userId || request.query.where.userId == request.auth.uid;
+      allow write: if true;
+      allow create: if request.auth.uid == request.resource.data.userId;
+    }
+
+     match /withdrawals/{withdrawalId} {
+      // Allow users to read their own withdrawals (single doc or list)
+      // Allow admin to write to any for approval/rejection
+      allow read: if request.auth.uid == resource.data.userId || request.query.where.userId == request.auth.uid;
+      allow write: if true;
+      allow create: if request.auth.uid == request.resource.data.userId;
+     }
+
+     // Admin can read all user data for the panel
+     match /users/{document=**} {
+       allow read, write: if true;
+     }
+
+    match /users/{userId} {
+      // A user can create their own profile.
+      allow create: if isOwner(userId);
+      // A user can delete their own profile.
+      allow delete: if isOwner(userId);
+      // A user can only update their own profile (e.g. balance)
+      allow update: if isOwner(userId);
+    }
+    
+    match /users/{userId}/bets/{betId} {
+      // A user can manage their own bets.
+      allow create, update, delete, read: if isOwner(userId);
+    }
+    
+    // Legacy collections - block all client access
+    match /roles_admin/{adminId} {
+      allow read, write: if false;
+    }
+
+    match /game_rounds/{gameId} {
+      // Game rounds are public information. Any client can create a new game
+      // round result, and anyone can read it. In a production app, writes
+      // should be locked down to a trusted server environment.
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

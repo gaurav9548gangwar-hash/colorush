@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useCollection } from '@/firebase/firestore/use-collection'
-import { collection, doc, getDocs, query, updateDoc, writeBatch, where, onSnapshot, Unsubscribe } from 'firebase/firestore'
+import { collection, doc, query, updateDoc, writeBatch, where, onSnapshot, Unsubscribe } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, Deposit, Withdrawal } from '@/lib/types'
+import { FirestorePermissionError } from '@/firebase/errors'
+import { errorEmitter } from '@/firebase/error-emitter'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -16,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { LogOut, RefreshCw } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useCollection } from '@/firebase/firestore/use-collection'
 
 
 function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void }) {
@@ -116,47 +118,46 @@ export default function AdminPage() {
     let depositUnsubscribe: Unsubscribe | undefined;
     let withdrawalUnsubscribe: Unsubscribe | undefined;
     
-    try {
-        // Real-time listener for Deposits
-        setIsLoadingDeposits(true);
-        const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
-        depositUnsubscribe = onSnapshot(depositQuery, (snapshot) => {
-            const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit))
-                .map(dep => ({ ...dep, user: allUsers.find(u => u.id === dep.userId) }));
-            setDeposits(depositData);
-            setIsLoadingDeposits(false);
-        }, (error) => {
-            console.error("Failed to fetch deposits in real-time", error);
-            setIsLoadingDeposits(false);
-            toast({ variant: "destructive", title: "Error", description: "Could not fetch deposit requests."})
-        });
-
-        // Real-time listener for Withdrawals
-        setIsLoadingWithdrawals(true);
-        const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
-        withdrawalUnsubscribe = onSnapshot(withdrawalQuery, (snapshot) => {
-            const withdrawalData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal))
-                .map(wd => ({ ...wd, user: allUsers.find(u => u.id === wd.userId) }));
-            setWithdrawals(withdrawalData);
-            setIsLoadingWithdrawals(false);
-        }, (error) => {
-            console.error("Failed to fetch withdrawals in real-time", error);
-            setIsLoadingWithdrawals(false);
-            toast({ variant: "destructive", title: "Error", description: "Could not fetch withdrawal requests."})
-        });
-
-    } catch (e) {
-        console.error("Error setting up admin listeners", e);
+    // Real-time listener for Deposits
+    setIsLoadingDeposits(true);
+    const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
+    depositUnsubscribe = onSnapshot(depositQuery, (snapshot) => {
+        const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit))
+            .map(dep => ({ ...dep, user: allUsers.find(u => u.id === dep.userId) }));
+        setDeposits(depositData);
         setIsLoadingDeposits(false);
+    }, (error) => {
+        setIsLoadingDeposits(false);
+        const contextualError = new FirestorePermissionError({
+            operation: 'list',
+            path: 'deposits'
+        });
+        errorEmitter.emit('permission-error', contextualError);
+    });
+
+    // Real-time listener for Withdrawals
+    setIsLoadingWithdrawals(true);
+    const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
+    withdrawalUnsubscribe = onSnapshot(withdrawalQuery, (snapshot) => {
+        const withdrawalData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal))
+            .map(wd => ({ ...wd, user: allUsers.find(u => u.id === wd.userId) }));
+        setWithdrawals(withdrawalData);
         setIsLoadingWithdrawals(false);
-    }
+    }, (error) => {
+        setIsLoadingWithdrawals(false);
+        const contextualError = new FirestorePermissionError({
+            operation: 'list',
+            path: 'withdrawals'
+        });
+        errorEmitter.emit('permission-error', contextualError);
+    });
     
     // Cleanup listeners on component unmount
     return () => {
         if (depositUnsubscribe) depositUnsubscribe();
         if (withdrawalUnsubscribe) withdrawalUnsubscribe();
     };
-  }, [firestore, isAuthenticating, allUsers, toast]);
+  }, [firestore, isAuthenticating, allUsers]);
 
 
   const handleRequest = async (type: 'deposit' | 'withdrawal', requestId: string, userId: string, amount: number, action: 'approved' | 'rejected') => {
@@ -191,7 +192,7 @@ export default function AdminPage() {
       await batch.commit();
 
       toast({ title: 'Success', description: `Request has been ${action}.` });
-      forceUserRefresh();
+      // No need for manual refresh with onSnapshot
     } catch (error) {
       console.error(`Failed to ${action} request:`, error);
       toast({ variant: 'destructive', title: 'Error', description: `Could not process the request.` });

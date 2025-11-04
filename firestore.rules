@@ -20,6 +20,8 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      // Allow admin to list all users for the management panel.
+      allow list: if true;
       // A user can create their own profile.
       allow create: if isOwner(userId);
       // A user can only read and update their own profile (e.g. balance)

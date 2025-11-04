@@ -17,9 +17,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Label } from "@/components/ui/label"
 import { LogOut, RefreshCw } from 'lucide-react'
 
-// This UID is associated with admin@tiranga.in after it's created.
-// We keep it for an extra layer of security check.
-const ADMIN_UID = "p8I214dVO5fNkBpA0fsOaB2b6n82";
 
 function BalanceDialog({ user, children }: { user: User, children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -103,9 +100,9 @@ export default function AdminPage() {
 
   const filteredUsers = users?.filter(u => 
     u.id !== user?.uid && ( // Exclude admin from the list
-        u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.phone?.includes(searchTerm) ||
-        u.emailId?.toLowerCase().includes(searchTerm.toLowerCase())
+        (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (u.phone && u.phone.includes(searchTerm)) ||
+        (u.emailId && u.emailId.toLowerCase().includes(searchTerm.toLowerCase()))
     )
   );
   

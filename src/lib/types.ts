@@ -43,7 +43,7 @@ export type Bet = {
     roundId: string;
     choice: string;
     amount: number;
-    status: 'pending' | 'win' | 'loss';
+    status: 'active' | 'win' | 'loss';
     won: boolean;
     payout: number;
     createdAt: any; // serverTimestamp will be an object
@@ -68,3 +68,4 @@ export type WithdrawalRequest = {
   status: 'pending' | 'approved' | 'rejected';
   date: string;
 };
+

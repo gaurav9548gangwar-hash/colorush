@@ -55,7 +55,9 @@ service cloud.firestore {
     }
 
     match /game_rounds/{gameId} {
-      // Game rounds are public information and can be read by anyone.
+      // Game rounds are public information. Any client can create a new game
+      // round result, and anyone can read it. In a production app, writes
+      // should be locked down to a trusted server environment.
       allow read: if true;
       allow write: if false;
     }

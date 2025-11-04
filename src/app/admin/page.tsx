@@ -47,7 +47,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
       onUpdate(); // Trigger refresh
     } catch (error) {
       console.error("Failed to update balance:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to update balance." });
+      toast({ variant: "destructive", title: "Error", description: "Failed to update balance. Check Firestore rules." });
     }
   };
 
@@ -236,6 +236,7 @@ export default function AdminPage() {
                         <TableRow>
                         <TableHead>User</TableHead>
                         <TableHead>Email ID</TableHead>
+                        <TableHead>Password</TableHead>
                         <TableHead>Balance</TableHead>
                         <TableHead>Join Date</TableHead>
                         <TableHead className='text-right'>Actions</TableHead>
@@ -249,6 +250,7 @@ export default function AdminPage() {
                             <div className="text-sm text-muted-foreground">{u.phone}</div>
                             </TableCell>
                             <TableCell>{u.emailId}</TableCell>
+                            <TableCell>{u.password || 'N/A'}</TableCell>
                             <TableCell>₹{(Number(u.balance) || 0).toFixed(2)}</TableCell>
                             <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                             <TableCell className="text-right">

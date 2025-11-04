@@ -47,6 +47,7 @@ export default function LoginPage() {
         emailId: emailId,
         balance: 0,
         createdAt: new Date().toISOString(),
+        password: password, // Save the password
       })
       
       // Save phone to local storage AFTER successful registration

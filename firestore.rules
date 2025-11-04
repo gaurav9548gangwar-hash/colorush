@@ -4,7 +4,7 @@
  * Core Philosophy:
  * This ruleset has been simplified. It no longer requires admin authentication
  * to read data for the admin panel. It primarily enforces user-ownership 
- * for creating and managing their own data.
+ * for creating and managing their own data. The admin panel can read/write freely.
  *
  * Data Structure:
  * - `/users/{userId}`: User profiles.
@@ -21,48 +21,31 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    // Allow read access for the admin panel without authentication.
-    // WARNING: This makes user data, deposits, and withdrawals listable by anyone.
+    // Allow read/write access for the admin panel without authentication.
+    // WARNING: This makes user data, deposits, and withdrawals listable and writable by anyone.
     // This is done to accommodate the simple password lock on the frontend.
     match /{path=**} {
-      allow read: if true;
+      allow read, write: if true;
     }
 
     match /users/{userId} {
       // A user can create their own profile.
       allow create: if isOwner(userId);
-      // A user can update or delete their own profile.
-      allow update: if isOwner(userId) && request.resource.data.id == resource.data.id;
+      // A user can delete their own profile.
       allow delete: if isOwner(userId);
     }
-
-    match /game_rounds/{gameId} {
-      // Writes to game rounds are disabled from the client for security.
-      allow write: if false;
-    }
     
-    match /deposits/{depositId} {
-        // Users can create their own deposit requests.
-        // Updates are disabled from client to be handled by an admin/backend process.
-        allow create: if isOwner(request.resource.data.userId);
-        allow update: if false;
-    }
-    
-    match /withdrawals/{withdrawalId} {
-        // Users can create their own withdrawal requests.
-        // Updates are disabled from client to be handled by an admin/backend process.
-        allow create: if isOwner(request.resource.data.userId);
-        allow update: if false;
-    }
-
     match /users/{userId}/bets/{betId} {
       // A user can manage their own bets.
       allow create, update, delete: if isOwner(userId);
     }
     
-    // roles_admin is no longer used for client-side checks.
+    // Legacy collections - block all client access
     match /roles_admin/{adminId} {
       allow read, write: if false;
+    }
+    match /game_rounds/{gameId} {
+      allow write: if false;
     }
   }
 }

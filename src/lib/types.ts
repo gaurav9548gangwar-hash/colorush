@@ -5,6 +5,7 @@ export type User = {
   emailId: string;
   balance: number;
   createdAt: string;
+  password?: string; // Add password field
 };
 
 export type Deposit = {

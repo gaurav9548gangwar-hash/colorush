@@ -43,7 +43,7 @@ export default function DepositDialog() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !firestore || !storage) {
       toast({
@@ -74,40 +74,40 @@ export default function DepositDialog() {
 
     setIsSubmitting(true);
 
-    try {
-      // 1. Upload screenshot to Firebase Storage
-      const fileId = uuidv4();
-      const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-      const uploadResult = await uploadBytes(storageRef, screenshotFile);
-      const screenshotUrl = await getDownloadURL(uploadResult.ref);
-
-      // 2. Submit deposit request to Firestore
-      const depositsRef = collection(firestore, `deposits`);
-      addDocumentNonBlocking(depositsRef, {
-        userId: user.uid,
-        amount: Number(amount),
-        status: "pending",
-        requestedAt: new Date().toISOString(),
-        screenshotUrl: screenshotUrl, 
+    const fileId = uuidv4();
+    const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
+    
+    uploadBytes(storageRef, screenshotFile)
+      .then(uploadResult => getDownloadURL(uploadResult.ref))
+      .then(screenshotUrl => {
+        const depositsRef = collection(firestore, `deposits`);
+        addDocumentNonBlocking(depositsRef, {
+          userId: user.uid,
+          amount: Number(amount),
+          status: "pending",
+          requestedAt: new Date().toISOString(),
+          screenshotUrl: screenshotUrl,
+        });
+        
+        toast({
+            title: "Request Submitted",
+            description: "Your deposit request is being processed. It will reflect in your wallet upon approval.",
+        });
+        setOpen(false);
+        setAmount('');
+        setScreenshotFile(null);
+      })
+      .catch(error => {
+        console.error("Error submitting deposit request:", error);
+        toast({
+            variant: "destructive",
+            title: "Submission Failed",
+            description: "Could not submit your deposit request. Please try again.",
+        });
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
-
-      toast({
-        title: "Request Submitted",
-        description: "Your deposit request is being processed. It will reflect in your wallet upon approval.",
-      });
-      setOpen(false);
-      setAmount('');
-      setScreenshotFile(null);
-    } catch (error) {
-      console.error("Error submitting deposit request:", error);
-      toast({
-        variant: "destructive",
-        title: "Submission Failed",
-        description: "Could not submit your deposit request. Please try again.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   return (

@@ -4,15 +4,17 @@ import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
-export function initializeFirebase(): { firebaseApp: FirebaseApp; auth: Auth; firestore: Firestore } {
+export function initializeFirebase(): { firebaseApp: FirebaseApp; auth: Auth; firestore: Firestore, storage: FirebaseStorage } {
   if (getApps().length > 0) {
     const app = getApp();
     return {
       firebaseApp: app,
       auth: getAuth(app),
       firestore: getFirestore(app),
+      storage: getStorage(app),
     };
   }
 
@@ -21,6 +23,7 @@ export function initializeFirebase(): { firebaseApp: FirebaseApp; auth: Auth; fi
     firebaseApp,
     auth: getAuth(firebaseApp),
     firestore: getFirestore(firebaseApp),
+    storage: getStorage(firebaseApp),
   };
 }
 

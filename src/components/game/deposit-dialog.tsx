@@ -16,13 +16,17 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { useFirebase, addDocumentNonBlocking } from "@/firebase";
 import { collection } from "firebase/firestore";
-import { Copy } from "lucide-react";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { v4 as uuidv4 } from "uuid";
+import { Copy, Loader2 } from "lucide-react";
 
 export default function DepositDialog() {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-  const { user, firestore } = useFirebase();
+  const { user, firestore, storage } = useFirebase();
   const UPI_ID = "colourtrest99955@ptyes";
 
   const handleCopy = () => {
@@ -33,9 +37,15 @@ export default function DepositDialog() {
     });
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setScreenshotFile(e.target.files[0]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !firestore) {
+    if (!user || !firestore || !storage) {
       toast({
         variant: "destructive",
         title: "Error",
@@ -53,15 +63,32 @@ export default function DepositDialog() {
       return;
     }
 
+    if (!screenshotFile) {
+      toast({
+        variant: "destructive",
+        title: "Screenshot Required",
+        description: "Please upload a payment screenshot.",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
+      // 1. Upload screenshot to Firebase Storage
+      const fileId = uuidv4();
+      const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
+      await uploadBytes(storageRef, screenshotFile);
+      const screenshotUrl = await getDownloadURL(storageRef);
+
+      // 2. Submit deposit request to Firestore
       const depositsRef = collection(firestore, `deposits`);
       await addDocumentNonBlocking(depositsRef, {
         userId: user.uid,
         amount: Number(amount),
         status: "pending",
         requestedAt: new Date().toISOString(),
-        // In a real app, you would upload the screenshot and save the URL
-        screenshotUrl: "https://via.placeholder.com/150", 
+        screenshotUrl: screenshotUrl, 
       });
 
       toast({
@@ -70,6 +97,7 @@ export default function DepositDialog() {
       });
       setOpen(false);
       setAmount('');
+      setScreenshotFile(null);
     } catch (error) {
       console.error("Error submitting deposit request:", error);
       toast({
@@ -77,6 +105,8 @@ export default function DepositDialog() {
         title: "Submission Failed",
         description: "Could not submit your deposit request. Please try again.",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -89,7 +119,7 @@ export default function DepositDialog() {
         <DialogHeader>
           <DialogTitle>Make a Deposit</DialogTitle>
           <DialogDescription>
-            Pay to the UPI ID below, then enter the amount and submit your request.
+            Pay to the UPI ID below, then enter the amount, upload the screenshot, and submit your request.
             Minimum deposit is ₹200.
           </DialogDescription>
         </DialogHeader>
@@ -117,12 +147,26 @@ export default function DepositDialog() {
                 required
               />
             </div>
-             {/* We will add screenshot upload functionality in a future step */}
+            <div>
+              <Label htmlFor="screenshot">
+                Payment Screenshot
+              </Label>
+              <Input
+                id="screenshot"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                required
+              />
+            </div>
             <p className="text-xs text-center text-muted-foreground pt-2">
                 After submitting, your request will be reviewed by our team.
             </p>
           <DialogFooter>
-            <Button type="submit">Submit Request</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting ? 'Submitting...' : 'Submit Request'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

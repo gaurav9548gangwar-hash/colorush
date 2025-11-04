@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCollection } from '@/firebase/firestore/use-collection'
-import { collection, doc, getDocs, query, updateDoc, writeBatch, where } from 'firebase/firestore'
+import { collection, doc, getDocs, query, updateDoc, writeBatch, where, onSnapshot, Unsubscribe } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, Deposit, Withdrawal } from '@/lib/types'
 
@@ -83,7 +83,7 @@ export default function AdminPage() {
   const { firestore } = useFirebase();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
-  const [key, setKey] = useState(0); // State to force re-render/re-fetch
+  const [key, setKey] = useState(0); // State to force re-render/re-fetch for users
   const { toast } = useToast();
   const [isAuthenticating, setIsAuthenticating] = useState(true);
 
@@ -96,7 +96,7 @@ export default function AdminPage() {
     }
   }, [router]);
 
-  const forceRefresh = () => setKey(prevKey => prevKey + 1);
+  const forceUserRefresh = () => setKey(prevKey => prevKey + 1);
   
   const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore, key]);
   const { data: users, isLoading: isLoadingUsers, error: usersError } = useCollection<User>(usersRef);
@@ -105,37 +105,59 @@ export default function AdminPage() {
   const [withdrawals, setWithdrawals] = useState<(Withdrawal & { user?: User })[]>([]);
   const [isLoadingDeposits, setIsLoadingDeposits] = useState(true);
   const [isLoadingWithdrawals, setIsLoadingWithdrawals] = useState(true);
+  
+  const allUsersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const { data: allUsers } = useCollection<User>(allUsersRef);
+
 
   useEffect(() => {
-    if (!firestore || isAuthenticating) return;
+    if (!firestore || isAuthenticating || !allUsers) return;
 
-    const fetchRequests = async () => {
-      // Fetch all users first to map them to requests
-      const userList = users || [];
-
-      // Fetch Deposits
-      setIsLoadingDeposits(true);
-      const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
-      const depositSnap = await getDocs(depositQuery);
-      const depositData = depositSnap.docs.map(d => ({ ...d.data(), id: d.id } as Deposit))
-        .map(dep => ({ ...dep, user: userList.find(u => u.id === dep.userId) }));
-      setDeposits(depositData);
-      setIsLoadingDeposits(false);
-
-      // Fetch Withdrawals
-      setIsLoadingWithdrawals(true);
-      const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
-      const withdrawalSnap = await getDocs(withdrawalQuery);
-      const withdrawalData = withdrawalSnap.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal))
-       .map(wd => ({ ...wd, user: userList.find(u => u.id === wd.userId) }));
-      setWithdrawals(withdrawalData);
-      setIsLoadingWithdrawals(false);
-    };
+    let depositUnsubscribe: Unsubscribe | undefined;
+    let withdrawalUnsubscribe: Unsubscribe | undefined;
     
-    if(users) {
-      fetchRequests();
+    try {
+        // Real-time listener for Deposits
+        setIsLoadingDeposits(true);
+        const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
+        depositUnsubscribe = onSnapshot(depositQuery, (snapshot) => {
+            const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit))
+                .map(dep => ({ ...dep, user: allUsers.find(u => u.id === dep.userId) }));
+            setDeposits(depositData);
+            setIsLoadingDeposits(false);
+        }, (error) => {
+            console.error("Failed to fetch deposits in real-time", error);
+            setIsLoadingDeposits(false);
+            toast({ variant: "destructive", title: "Error", description: "Could not fetch deposit requests."})
+        });
+
+        // Real-time listener for Withdrawals
+        setIsLoadingWithdrawals(true);
+        const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
+        withdrawalUnsubscribe = onSnapshot(withdrawalQuery, (snapshot) => {
+            const withdrawalData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal))
+                .map(wd => ({ ...wd, user: allUsers.find(u => u.id === wd.userId) }));
+            setWithdrawals(withdrawalData);
+            setIsLoadingWithdrawals(false);
+        }, (error) => {
+            console.error("Failed to fetch withdrawals in real-time", error);
+            setIsLoadingWithdrawals(false);
+            toast({ variant: "destructive", title: "Error", description: "Could not fetch withdrawal requests."})
+        });
+
+    } catch (e) {
+        console.error("Error setting up admin listeners", e);
+        setIsLoadingDeposits(false);
+        setIsLoadingWithdrawals(false);
     }
-  }, [firestore, isAuthenticating, users, key]);
+    
+    // Cleanup listeners on component unmount
+    return () => {
+        if (depositUnsubscribe) depositUnsubscribe();
+        if (withdrawalUnsubscribe) withdrawalUnsubscribe();
+    };
+  }, [firestore, isAuthenticating, allUsers, toast]);
+
 
   const handleRequest = async (type: 'deposit' | 'withdrawal', requestId: string, userId: string, amount: number, action: 'approved' | 'rejected') => {
     if (!firestore) return;
@@ -169,7 +191,7 @@ export default function AdminPage() {
       await batch.commit();
 
       toast({ title: 'Success', description: `Request has been ${action}.` });
-      forceRefresh();
+      forceUserRefresh();
     } catch (error) {
       console.error(`Failed to ${action} request:`, error);
       toast({ variant: 'destructive', title: 'Error', description: `Could not process the request.` });
@@ -216,7 +238,7 @@ export default function AdminPage() {
                 <CardTitle>All Users</CardTitle>
                 <div className='flex items-center gap-2'>
                     <p className='text-sm text-muted-foreground'>Total Users: {filteredUsers?.length || 0}</p>
-                    <Button size="icon" variant="ghost" onClick={forceRefresh}>
+                    <Button size="icon" variant="ghost" onClick={forceUserRefresh}>
                         <RefreshCw className='h-4 w-4' />
                     </Button>
                 </div>
@@ -254,7 +276,7 @@ export default function AdminPage() {
                             <TableCell>₹{(Number(u.balance) || 0).toFixed(2)}</TableCell>
                             <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                             <TableCell className="text-right">
-                                <BalanceDialog user={u} onUpdate={forceRefresh} />
+                                <BalanceDialog user={u} onUpdate={forceUserRefresh} />
                             </TableCell>
                         </TableRow>
                         ))}

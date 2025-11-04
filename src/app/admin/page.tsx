@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { collection, doc, query, updateDoc, writeBatch, where, onSnapshot, Unsubscribe } from 'firebase/firestore'
+import { collection, doc, query, updateDoc, writeBatch, where, onSnapshot, Unsubscribe, getDoc } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, Deposit, Withdrawal } from '@/lib/types'
 import { FirestorePermissionError } from '@/firebase/errors'
@@ -108,23 +108,37 @@ export default function AdminPage() {
   const [isLoadingDeposits, setIsLoadingDeposits] = useState(true);
   const [isLoadingWithdrawals, setIsLoadingWithdrawals] = useState(true);
   
-  const allUsersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-  const { data: allUsers } = useCollection<User>(allUsersRef);
-
-
+  
   useEffect(() => {
-    if (!firestore || isAuthenticating || !allUsers) return;
-
+    if (!firestore || isAuthenticating) return;
+  
+    const fetchUserDataForRequests = async (requests: (Deposit | Withdrawal)[]) => {
+      const requestsWithUsers = await Promise.all(
+        requests.map(async (req) => {
+          try {
+            const userDoc = await getDoc(doc(firestore, 'users', req.userId));
+            if (userDoc.exists()) {
+              return { ...req, user: userDoc.data() as User };
+            }
+          } catch (e) {
+            console.error(`Failed to fetch user ${req.userId}`, e);
+          }
+          return { ...req, user: undefined }; // Return request even if user fetch fails
+        })
+      );
+      return requestsWithUsers;
+    };
+  
     let depositUnsubscribe: Unsubscribe | undefined;
     let withdrawalUnsubscribe: Unsubscribe | undefined;
     
     // Real-time listener for Deposits
     setIsLoadingDeposits(true);
     const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
-    depositUnsubscribe = onSnapshot(depositQuery, (snapshot) => {
-        const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit))
-            .map(dep => ({ ...dep, user: allUsers.find(u => u.id === dep.userId) }));
-        setDeposits(depositData);
+    depositUnsubscribe = onSnapshot(depositQuery, async (snapshot) => {
+        const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit));
+        const depositsWithUsers = await fetchUserDataForRequests(depositData);
+        setDeposits(depositsWithUsers);
         setIsLoadingDeposits(false);
     }, (error) => {
         setIsLoadingDeposits(false);
@@ -134,14 +148,14 @@ export default function AdminPage() {
         });
         errorEmitter.emit('permission-error', contextualError);
     });
-
+  
     // Real-time listener for Withdrawals
     setIsLoadingWithdrawals(true);
     const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
-    withdrawalUnsubscribe = onSnapshot(withdrawalQuery, (snapshot) => {
-        const withdrawalData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal))
-            .map(wd => ({ ...wd, user: allUsers.find(u => u.id === wd.userId) }));
-        setWithdrawals(withdrawalData);
+    withdrawalUnsubscribe = onSnapshot(withdrawalQuery, async (snapshot) => {
+        const withdrawalData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal));
+        const withdrawalsWithUsers = await fetchUserDataForRequests(withdrawalData);
+        setWithdrawals(withdrawalsWithUsers);
         setIsLoadingWithdrawals(false);
     }, (error) => {
         setIsLoadingWithdrawals(false);
@@ -157,7 +171,7 @@ export default function AdminPage() {
         if (depositUnsubscribe) depositUnsubscribe();
         if (withdrawalUnsubscribe) withdrawalUnsubscribe();
     };
-  }, [firestore, isAuthenticating, allUsers]);
+  }, [firestore, isAuthenticating]);
 
 
   const handleRequest = async (type: 'deposit' | 'withdrawal', requestId: string, userId: string, amount: number, action: 'approved' | 'rejected') => {

@@ -29,8 +29,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // A user can create, update, or delete their own profile.
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      // A user can create their own profile.
+      allow create: if isOwner(userId);
+      // A user can update or delete their own profile.
       allow update: if isOwner(userId) && request.resource.data.id == resource.data.id;
       allow delete: if isOwner(userId);
     }

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCollection } from '@/firebase/firestore/use-collection'
 import { collection, doc, updateDoc } from 'firebase/firestore'
-import { useFirebase, useMemoFirebase } from '@/firebase'
+import { useFirebase, useMemoFirebase, useUser } from '@/firebase'
 import type { User } from '@/lib/types'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -73,24 +73,24 @@ function BalanceDialog({ user, children }: { user: User, children: React.ReactNo
 }
 
 export default function AdminPage() {
-  const { firestore } = useFirebase();
+  const { firestore, auth } = useFirebase();
+  const { user: adminUser, isUserLoading } = useUser();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
-  const [isClient, setIsClient] = useState(false);
-
+  
   useEffect(() => {
-    setIsClient(true);
-    const isAuthenticated = sessionStorage.getItem('isAdminAuthenticated') === 'true';
-    if (!isAuthenticated) {
+    if (!isUserLoading && !adminUser) {
       router.replace('/admin/login');
     }
-  }, [router]);
+  }, [adminUser, isUserLoading, router]);
   
   const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
   const { data: users, isLoading, error } = useCollection<User>(usersRef);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('isAdminAuthenticated');
+    if (auth) {
+      auth.signOut();
+    }
     router.push("/admin/login");
   };
 
@@ -100,7 +100,7 @@ export default function AdminPage() {
     (u.emailId && u.emailId.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (!isClient) {
+  if (isUserLoading || !adminUser) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p>Loading...</p>

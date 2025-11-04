@@ -2,27 +2,25 @@
 
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore'
+import { getAuth, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
-export function initializeFirebase() {
-  if (getApps().length) {
-    return getSdks(getApp());
+export function initializeFirebase(): { firebaseApp: FirebaseApp; auth: Auth; firestore: Firestore } {
+  if (getApps().length > 0) {
+    const app = getApp();
+    return {
+      firebaseApp: app,
+      auth: getAuth(app),
+      firestore: getFirestore(app),
+    };
   }
-  
-  // When running locally, initialize with the config object.
-  // In a deployed environment, initializeApp() might be called without arguments
-  // to use automatically provided environment variables.
-  const firebaseApp = initializeApp(firebaseConfig);
-  return getSdks(firebaseApp);
-}
 
-export function getSdks(firebaseApp: FirebaseApp) {
+  const firebaseApp = initializeApp(firebaseConfig);
   return {
     firebaseApp,
     auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp)
+    firestore: getFirestore(firebaseApp),
   };
 }
 

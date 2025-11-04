@@ -14,8 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { useFirebase, addDocumentNonBlocking } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { useFirebase, addDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase";
+import { collection, doc } from "firebase/firestore";
 import type { User } from "@/lib/types";
 
 export default function WithdrawDialog() {
@@ -23,17 +23,23 @@ export default function WithdrawDialog() {
   const [amount, setAmount] = useState('');
   const [upi, setUpi] = useState('');
   const { toast } = useToast();
-  const { user, firestore, isUserLoading, userError } = useFirebase();
-  const userData = (user as unknown as { data: User })?.data;
+  const { user, firestore } = useFirebase();
+  
+  const userRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [user, firestore]);
+  const { data: userData } = useDoc<User>(userRef);
+
 
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
-        const currentBalance = (user as any)?.balance ?? 0;
+        const currentBalance = userData?.balance ?? 0;
         if (currentBalance < 500) {
             toast({
                 variant: 'destructive',
                 title: 'Insufficient Balance',
-                description: 'You need at least ₹500 in your wallet to make a withdrawal request.',
+                description: 'You need at least INR 500 in your wallet to make a withdrawal request.',
             });
             return;
         }
@@ -61,7 +67,7 @@ export default function WithdrawDialog() {
       return;
     }
     
-    const currentBalance = (user as any)?.balance ?? 0;
+    const currentBalance = userData?.balance ?? 0;
     if (Number(amount) > currentBalance) {
         toast({
             variant: "destructive",
@@ -108,9 +114,12 @@ export default function WithdrawDialog() {
         <DialogHeader>
           <DialogTitle>Request Withdrawal</DialogTitle>
           <DialogDescription>
-            Enter the amount and your UPI ID to request a withdrawal. Minimum balance of ₹500 is required.
+            Minimum balance of INR 500 is required.
           </DialogDescription>
         </DialogHeader>
+        <div className="text-sm">
+            Current Balance: <span className="font-medium">INR {userData?.balance?.toFixed(2) ?? '0.00'}</span>
+        </div>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
@@ -120,7 +129,7 @@ export default function WithdrawDialog() {
               <Input
                 id="amount"
                 type="number"
-                placeholder="₹500"
+                placeholder="e.g., 500"
                 className="col-span-3"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -142,7 +151,8 @@ export default function WithdrawDialog() {
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit">Submit Request</Button>          </DialogFooter>
+            <Button type="submit">Submit Request</Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

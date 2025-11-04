@@ -43,7 +43,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
 
     try {
       await updateDoc(userRef, { balance: newBalance });
-      toast({ title: "Success", description: `Balance for ${user.name} updated to ₹${newBalance.toFixed(2)}` });
+      toast({ title: "Success", description: `Balance for ${user.name} updated to INR ${newBalance.toFixed(2)}` });
       setOpen(false);
       setAmount(0);
       onUpdate(); // Trigger refresh
@@ -61,7 +61,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
           <DialogTitle>Edit Balance for {user.name}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p>Current Balance: ₹{(Number(user.balance) || 0).toFixed(2)}</p>
+          <p>Current Balance: INR {(Number(user.balance) || 0).toFixed(2)}</p>
           <Label htmlFor="amount">Amount</Label>
           <Input
             id="amount"
@@ -205,7 +205,7 @@ export default function AdminPage() {
           batch.update(userRef, { balance: currentBalance + amount });
         } else { // withdrawal
            if(currentBalance < amount) {
-                toast({ variant: 'destructive', title: 'Insufficient Balance', description: `User only has ₹${currentBalance.toFixed(2)}.` });
+                toast({ variant: 'destructive', title: 'Insufficient Balance', description: `User only has INR ${currentBalance.toFixed(2)}.` });
                 return;
            }
            batch.update(userRef, { balance: currentBalance - amount });
@@ -298,7 +298,7 @@ export default function AdminPage() {
                             </TableCell>
                             <TableCell>{u.emailId}</TableCell>
                             <TableCell>{u.password || 'N/A'}</TableCell>
-                            <TableCell>₹{(Number(u.balance) || 0).toFixed(2)}</TableCell>
+                            <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
                             <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                             <TableCell className="text-right">
                                 <BalanceDialog user={u} onUpdate={forceUserRefresh} />
@@ -333,7 +333,7 @@ export default function AdminPage() {
                                 {deposits.map(d => (
                                     <TableRow key={d.id}>
                                         <TableCell>{d.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{d.userId}</span></TableCell>
-                                        <TableCell>₹{d.amount.toFixed(2)}</TableCell>
+                                        <TableCell>INR {d.amount.toFixed(2)}</TableCell>
                                         <TableCell>
                                             {d.screenshotUrl ? (
                                                 <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View</a>
@@ -377,7 +377,7 @@ export default function AdminPage() {
                                 {withdrawals.map(w => (
                                     <TableRow key={w.id}>
                                         <TableCell>{w.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{w.userId}</span></TableCell>
-                                        <TableCell>₹{w.amount.toFixed(2)}</TableCell>
+                                        <TableCell>INR {w.amount.toFixed(2)}</TableCell>
                                         <TableCell>{w.upiBank}</TableCell>
                                         <TableCell>{w.requestedAt ? new Date(w.requestedAt).toLocaleString() : 'N/A'}</TableCell>
                                         <TableCell className="text-right space-x-2">

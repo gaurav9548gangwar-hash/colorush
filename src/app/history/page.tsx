@@ -75,13 +75,20 @@ export default function HistoryPage() {
     };
   }, [firestore, user]);
   
-  const getStatusBadgeVariant = (status: 'pending' | 'approved' | 'rejected') => {
+  const getStatusBadgeVariant = (status: string) => {
     switch (status) {
         case 'approved': return 'default';
         case 'pending': return 'secondary';
+        case 'pending_upload': return 'secondary';
+        case 'upload_failed': return 'destructive';
         case 'rejected': return 'destructive';
         default: return 'outline';
     }
+  }
+
+  const getStatusText = (status: string) => {
+      if(status === 'pending_upload') return 'pending';
+      return status;
   }
 
   if (isUserLoading || !user) {
@@ -122,9 +129,9 @@ export default function HistoryPage() {
                     <TableBody>
                       {deposits?.map((d) => (
                         <TableRow key={d.id}>
-                          <TableCell className="font-medium">₹{d.amount.toFixed(2)}</TableCell>
+                          <TableCell className="font-medium">INR {d.amount.toFixed(2)}</TableCell>
                           <TableCell>
-                            <Badge variant={getStatusBadgeVariant(d.status)}>{d.status}</Badge>
+                            <Badge variant={getStatusBadgeVariant(d.status)}>{getStatusText(d.status)}</Badge>
                           </TableCell>
                           <TableCell className="text-right text-xs">
                             {new Date(d.requestedAt).toLocaleString()}
@@ -157,7 +164,7 @@ export default function HistoryPage() {
                     <TableBody>
                       {withdrawals?.map((w) => (
                         <TableRow key={w.id}>
-                          <TableCell className="font-medium">₹{w.amount.toFixed(2)}</TableCell>
+                          <TableCell className="font-medium">INR {w.amount.toFixed(2)}</TableCell>
                           <TableCell>
                              <Badge variant={getStatusBadgeVariant(w.status)}>{w.status}</Badge>
                           </TableCell>

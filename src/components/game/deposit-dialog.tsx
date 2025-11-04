@@ -59,7 +59,7 @@ export default function DepositDialog() {
       return;
     }
     if (Number(amount) < 200) {
-      toast({ variant: "destructive", title: "Invalid Amount", description: "Minimum deposit is ₹200." });
+      toast({ variant: "destructive", title: "Invalid Amount", description: "Minimum deposit is INR 200." });
       return;
     }
     if (!screenshotFile) {
@@ -134,7 +134,7 @@ export default function DepositDialog() {
           <DialogTitle>Make a Deposit</DialogTitle>
           <DialogDescription>
             Pay to the UPI ID below, then enter the amount, upload the screenshot, and submit your request.
-            Minimum deposit is ₹200.
+            Minimum deposit is INR 200.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">

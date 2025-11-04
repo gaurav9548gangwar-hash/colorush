@@ -143,7 +143,7 @@ export default function GameArea() {
       // 3. Store current bet to check for win/loss later
       setBetsThisRound(prev => [...prev, { id: newBetRef.id, amount: betAmount, choice: betChoice }]);
 
-      toast({ title: "Bet Placed!", description: `₹${betAmount} deducted from your wallet.` });
+      toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
       // 4. Reset selections for next round
       setSelection({ color: null, number: null, size: null });
       setBetAmount(10);
@@ -212,7 +212,7 @@ export default function GameArea() {
       // Show UI feedback
       if (overallWin) {
         setShowResultEmoji('win');
-        toast({ title: "You Won!", description: `₹${totalPayout.toFixed(2)} has been added to your wallet.` });
+        toast({ title: "You Won!", description: `INR ${totalPayout.toFixed(2)} has been added to your wallet.` });
       } else {
         setShowResultEmoji('loss');
         toast({ title: "You Lost!", variant: 'destructive' });
@@ -404,14 +404,14 @@ export default function GameArea() {
               <TableRow key={bet.id}>
                 <TableCell className="text-xs">{bet.roundId}</TableCell>
                 <TableCell className="text-xs">{bet.choice}</TableCell>
-                <TableCell>₹{bet.amount.toFixed(2)}</TableCell>
+                <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
                 <TableCell>
                    <Badge variant={bet.status === 'win' ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
                         {bet.status}
                     </Badge>
                 </TableCell>
                 <TableCell className="text-right text-green-400">
-                    {bet.status === 'win' ? `+₹${bet.payout.toFixed(2)}` : '₹0.00'}
+                    {bet.status === 'win' ? `+INR ${bet.payout.toFixed(2)}` : 'INR 0.00'}
                 </TableCell>
               </TableRow>
             ))}

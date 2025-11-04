@@ -26,7 +26,7 @@ export default function Wallet() {
         <div>
           <p className="text-sm text-gray-400">Wallet Balance</p>
           <div className="flex items-center gap-2">
-            <p className="text-2xl font-bold">₹{userData?.balance?.toFixed(2) ?? '0.00'}</p>
+            <p className="text-2xl font-bold">INR {userData?.balance?.toFixed(2) ?? '0.00'}</p>
             <Button variant="ghost" size="icon" className="h-8 w-8">
               <RefreshCw className="h-4 w-4" />
             </Button>

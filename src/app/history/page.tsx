@@ -4,8 +4,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/game/header';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useFirebase } from '@/firebase';
+import { collection, query, where, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import type { Deposit, Withdrawal } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -30,35 +30,49 @@ export default function HistoryPage() {
   useEffect(() => {
     if (!firestore || !user) return;
 
-    const fetchHistory = async () => {
-      // Fetch Deposits
+    let depositUnsubscribe: Unsubscribe | undefined;
+    let withdrawalUnsubscribe: Unsubscribe | undefined;
+
+    try {
+      // Real-time listener for Deposits
       setIsLoadingDeposits(true);
       const depositQuery = query(collection(firestore, 'deposits'), where('userId', '==', user.uid));
-      try {
-        const depositSnap = await getDocs(depositQuery);
-        const depositData = depositSnap.docs.map(d => ({ ...d.data(), id: d.id } as Deposit));
+      depositUnsubscribe = onSnapshot(depositQuery, (snapshot) => {
+        const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit));
         setDeposits(depositData.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
-      } catch (e) {
-          console.error("Failed to fetch deposits", e);
-      } finally {
         setIsLoadingDeposits(false);
-      }
-      
-      // Fetch Withdrawals
+      }, (error) => {
+        console.error("Failed to fetch deposits in real-time", error);
+        setIsLoadingDeposits(false);
+      });
+
+      // Real-time listener for Withdrawals
       setIsLoadingWithdrawals(true);
       const withdrawalQuery = query(collection(firestore, 'withdrawals'), where('userId', '==', user.uid));
-      try {
-          const withdrawalSnap = await getDocs(withdrawalQuery);
-          const withdrawalData = withdrawalSnap.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal));
-          setWithdrawals(withdrawalData.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
-      } catch(e) {
-          console.error("Failed to fetch withdrawals", e);
-      } finally {
+      withdrawalUnsubscribe = onSnapshot(withdrawalQuery, (snapshot) => {
+        const withdrawalData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Withdrawal));
+        setWithdrawals(withdrawalData.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
         setIsLoadingWithdrawals(false);
-      }
-    };
+      }, (error) => {
+        console.error("Failed to fetch withdrawals in real-time", error);
+        setIsLoadingWithdrawals(false);
+      });
 
-    fetchHistory();
+    } catch (e) {
+        console.error("Error setting up history listeners", e);
+        setIsLoadingDeposits(false);
+        setIsLoadingWithdrawals(false);
+    }
+    
+    // Cleanup listeners on component unmount
+    return () => {
+        if (depositUnsubscribe) {
+            depositUnsubscribe();
+        }
+        if (withdrawalUnsubscribe) {
+            withdrawalUnsubscribe();
+        }
+    };
   }, [firestore, user]);
   
   const getStatusBadgeVariant = (status: 'pending' | 'approved' | 'rejected') => {

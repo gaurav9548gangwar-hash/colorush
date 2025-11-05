@@ -39,8 +39,8 @@ service cloud.firestore {
       // Users can only READ their own bets (for single doc reads)
       allow read: if request.auth.uid == resource.data.userId;
 
-      // Users can LIST (query) their own bets, allowing for sorting.
-      allow list: if request.auth.uid == request.query.userId;
+      // Users can LIST (query) their own bets, ensuring the query is for their own userId.
+      allow list: if request.auth != null && request.query.where[0][2] == request.auth.uid;
       
       // Direct updates and deletes by users are not allowed.
       allow update, delete: if false;

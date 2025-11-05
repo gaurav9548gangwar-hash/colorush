@@ -16,11 +16,17 @@ export default function MyBetsTab() {
   const betsQuery = useMemoFirebase(
     () =>
       firestore && user
-        ? query(collection(firestore, "bets"), where("userId", "==", user.uid), orderBy("createdAt", "desc"))
+        ? query(collection(firestore, "bets"), where("userId", "==", user.uid))
         : null,
     [firestore, user]
   );
   const { data: myBets, isLoading, error } = useCollection<Bet>(betsQuery);
+  
+  const sortedBets = useMemo(() => {
+    if (!myBets) return [];
+    // Sort on the client-side
+    return myBets.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+  }, [myBets]);
 
   const getStatusVariant = (status: 'active' | 'win' | 'loss') => {
       switch(status) {
@@ -38,7 +44,7 @@ export default function MyBetsTab() {
         </div>
         {isLoading && <p className="text-center">Loading my bets...</p>}
         {error && <p className="text-center text-destructive">Could not load bet history. Please check permissions.</p>}
-        {myBets && myBets.length > 0 ? (
+        {sortedBets && sortedBets.length > 0 ? (
              <Table>
                 <TableHeader>
                     <TableRow>
@@ -49,7 +55,7 @@ export default function MyBetsTab() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {myBets.map(bet => (
+                    {sortedBets.map(bet => (
                         <TableRow key={bet.id}>
                             <TableCell>{bet.roundId.slice(-6)}</TableCell>
                             <TableCell>

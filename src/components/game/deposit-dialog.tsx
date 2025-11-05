@@ -77,39 +77,39 @@ export default function DepositDialog() {
       requestedAt: new Date().toISOString(),
       screenshotUrl: "",
     }).then(newDepositDoc => {
-      // 2. Give immediate feedback to the user and close dialog
-      toast({
-        title: "Request Submitted!",
-        description: "Your deposit is being processed. You can check the status in your history.",
-      });
-      setOpen(false);
-      resetForm();
-      setIsSubmitting(false);
-
-      // 3. Start background upload and update task
-      if (screenshotFile) {
-        const fileId = uuidv4();
-        const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-        
-        uploadBytes(storageRef, screenshotFile).then(uploadResult => {
-            getDownloadURL(uploadResult.ref).then(screenshotUrl => {
-                 // 4. Update the document with the URL and final 'pending' status
-                const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-                updateDoc(docToUpdateRef, {
-                    screenshotUrl: screenshotUrl,
-                    status: "pending",
-                });
-            }).catch(urlError => {
-                 console.error("Failed to get download URL:", urlError);
-                 const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-                 updateDoc(docToUpdateRef, { status: "upload_failed" });
-            });
-        }).catch(uploadError => {
-            console.error("Background upload failed:", uploadError);
-            const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-            updateDoc(docToUpdateRef, { status: "upload_failed" });
+        // 2. Give immediate feedback to the user and close dialog
+        toast({
+            title: "Request Submitted!",
+            description: "Your deposit is being processed. You can check the status in your history.",
         });
-      }
+        setOpen(false);
+        resetForm();
+        setIsSubmitting(false);
+
+        // 3. Start background upload and update task
+        if (screenshotFile) {
+            const fileId = uuidv4();
+            const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
+            
+            uploadBytes(storageRef, screenshotFile).then(uploadResult => {
+                getDownloadURL(uploadResult.ref).then(screenshotUrl => {
+                    // 4. Update the document with the URL and final 'pending' status
+                    const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
+                    updateDoc(docToUpdateRef, {
+                        screenshotUrl: screenshotUrl,
+                        status: "pending",
+                    });
+                }).catch(urlError => {
+                    console.error("Failed to get download URL:", urlError);
+                    const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
+                    updateDoc(docToUpdateRef, { status: "upload_failed" });
+                });
+            }).catch(uploadError => {
+                console.error("Background upload failed:", uploadError);
+                const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
+                updateDoc(docToUpdateRef, { status: "upload_failed" });
+            });
+        }
     }).catch(error => {
       console.error("Error submitting initial deposit request:", error);
       toast({

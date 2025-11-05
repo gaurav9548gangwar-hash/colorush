@@ -91,26 +91,28 @@ export default function DepositDialog() {
         resetForm();
         
         // 3. Start the upload in the background (don't await it here)
-        const uploadTask = async () => {
+        const uploadTask = async (docId: string, file: File) => {
             try {
                 const fileId = uuidv4();
                 const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-                const uploadResult = await uploadBytes(storageRef, screenshotFile);
+                const uploadResult = await uploadBytes(storageRef, file);
                 const screenshotUrl = await getDownloadURL(uploadResult.ref);
 
                 // 4. Update the document with the real URL and final pending status
-                await updateDoc(newDepositDoc, {
+                const depositDocRef = doc(firestore, "deposits", docId);
+                await updateDoc(depositDocRef, {
                     screenshotUrl: screenshotUrl,
                     status: "pending",
                 });
             } catch (uploadError) {
                 console.error("Background upload failed:", uploadError);
                 // Optionally update the doc to show a failure state
-                await updateDoc(newDepositDoc, { status: 'upload_failed' });
+                 const depositDocRef = doc(firestore, "deposits", docId);
+                await updateDoc(depositDocRef, { status: 'upload_failed' });
             }
         };
 
-        uploadTask(); // Fire the upload task without awaiting
+        uploadTask(newDepositDoc.id, screenshotFile); // Fire the upload task with the new doc ID and file
 
     } catch (error) {
         console.error("Error submitting initial deposit request:", error);

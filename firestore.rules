@@ -37,7 +37,7 @@ service cloud.firestore {
       allow create: if request.auth.uid == request.resource.data.userId;
       // Users can list their own bets for the 'My Bets' table.
       // This rule ensures the query is filtering by the user's own UID.
-      allow list: if request.auth != null && request.query.get('where')[0][2] == request.auth.uid;
+      allow list: if request.auth != null && request.query.where[0][2] == request.auth.uid;
       // Users cannot read, update or delete bets directly. Game logic updates them.
       allow read, update, delete: if false;
     }

@@ -52,7 +52,7 @@ export default function DepositDialog() {
     if(fileInput) fileInput.value = '';
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !firestore || !storage) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
@@ -69,56 +69,41 @@ export default function DepositDialog() {
 
     setIsSubmitting(true);
     
-    // 1. Immediately create the document with a 'pending_upload' status
-    addDoc(collection(firestore, 'deposits'), {
-      userId: user.uid,
-      amount: Number(amount),
-      status: "pending_upload",
-      requestedAt: new Date().toISOString(),
-      screenshotUrl: "",
-    }).then(newDepositDoc => {
-        // 2. Give immediate feedback to the user and close dialog
-        toast({
-            title: "Request Submitted!",
-            description: "Your deposit is being processed. You can check the status in your history.",
-        });
-        setOpen(false);
-        resetForm();
-        setIsSubmitting(false);
+    try {
+      // 1. Upload the file first and get its URL.
+      const fileId = uuidv4();
+      const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
+      const uploadResult = await uploadBytes(storageRef, screenshotFile);
+      const screenshotUrl = await getDownloadURL(uploadResult.ref);
 
-        // 3. Start background upload and update task
-        if (screenshotFile) {
-            const fileId = uuidv4();
-            const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-            
-            uploadBytes(storageRef, screenshotFile).then(uploadResult => {
-                getDownloadURL(uploadResult.ref).then(screenshotUrl => {
-                    // 4. Update the document with the URL and final 'pending' status
-                    const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-                    updateDoc(docToUpdateRef, {
-                        screenshotUrl: screenshotUrl,
-                        status: "pending",
-                    });
-                }).catch(urlError => {
-                    console.error("Failed to get download URL:", urlError);
-                    const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-                    updateDoc(docToUpdateRef, { status: "upload_failed" });
-                });
-            }).catch(uploadError => {
-                console.error("Background upload failed:", uploadError);
-                const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-                updateDoc(docToUpdateRef, { status: "upload_failed" });
-            });
-        }
-    }).catch(error => {
-      console.error("Error submitting initial deposit request:", error);
+      // 2. Now, create the Firestore document with the URL.
+      await addDoc(collection(firestore, 'deposits'), {
+        userId: user.uid,
+        amount: Number(amount),
+        status: "pending",
+        requestedAt: new Date().toISOString(),
+        screenshotUrl: screenshotUrl, 
+      });
+
+      // 3. Give feedback to the user.
+      toast({
+          title: "Request Submitted!",
+          description: "Your deposit is being processed. You can check the status in your history.",
+      });
+      
+      setOpen(false);
+      resetForm();
+
+    } catch (error) {
+      console.error("Error submitting deposit request:", error);
       toast({
           variant: "destructive",
           title: "Submission Failed",
-          description: "Could not submit your deposit request. Please try again.",
+          description: "Could not submit your deposit request. Please check your connection and try again.",
       });
-      setIsSubmitting(false); 
-    });
+    } finally {
+        setIsSubmitting(false); 
+    }
   };
 
   return (

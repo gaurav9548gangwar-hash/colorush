@@ -51,6 +51,9 @@ export default function GameArea() {
   const [isBettingLocked, setIsBettingLocked] = useState(false);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
+  
+  const [pastResults, setPastResults] = useState<GameResult[]>([]);
+  const [userBets, setUserBets] = useState<Bet[]>([]);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
@@ -61,13 +64,12 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
-  const [pastResults, setPastResults] = useState<GameResult[]>([]);
-  const [userBets, setUserBets] = useState<Bet[]>([]);
-
+  // Effect for initializing the first round
   useEffect(() => {
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
   
+  // Effect for fetching past game results
   useEffect(() => {
     if (!firestore) return;
     const gameRoundsQuery = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10));
@@ -78,18 +80,21 @@ export default function GameArea() {
     return () => unsubscribe();
   }, [firestore]);
   
+  // Effect for fetching the current user's bets
   useEffect(() => {
     if (!firestore || !user) {
         setUserBets([]);
         return;
     };
     
+    // This query is now safe and will not cause infinite loops.
     const userBetsQuery = query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
     const unsubscribe = onSnapshot(userBetsQuery, (snapshot) => {
         const bets = snapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
         setUserBets(bets);
     }, (error) => {
         console.error("Failed to fetch user bets in real-time", error);
+        // We can optionally create and emit a FirestorePermissionError here
     });
 
     return () => unsubscribe();
@@ -124,7 +129,8 @@ export default function GameArea() {
     try {
       const newBalance = userData.balance - betAmount;
       if (userRef) {
-        updateDoc(userRef, { balance: newBalance });
+        // This is an optimistic update.
+        await updateDoc(userRef, { balance: newBalance });
       }
       
       const newBetRef = collection(firestore, `bets`);
@@ -149,7 +155,10 @@ export default function GameArea() {
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      if (userRef && userData) updateDoc(userRef, { balance: userData.balance });
+      // If bet fails, revert the balance optimistically
+      if (userRef && userData) {
+        await updateDoc(userRef, { balance: userData.balance });
+      }
     }
   };
   
@@ -161,17 +170,11 @@ export default function GameArea() {
     try {
         const allBetsInRoundQuery = query(
             collection(firestore, 'bets'),
-            where('roundId', '==', currentRoundId)
+            where('roundId', '==', currentRoundId),
+            where('status', '==', 'active')
         );
         const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
-
-        const activeBetsData: PlacedBetInfo[] = [];
-        allBetsSnapshot.forEach(doc => {
-            const data = doc.data();
-            if(data.status === 'active') {
-                 activeBetsData.push({ id: doc.id, userId: data.userId, amount: data.amount, choice: data.choice });
-            }
-        });
+        const activeBetsData: PlacedBetInfo[] = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlacedBetInfo));
         
         const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
         activeBetsData.forEach(bet => {
@@ -184,7 +187,6 @@ export default function GameArea() {
         });
         
         let winningColor: 'green' | 'orange' | 'white';
-        
         if (activeBetsData.length === 0) {
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
@@ -206,11 +208,10 @@ export default function GameArea() {
             startTime: new Date().toISOString(),
             status: 'finished'
         };
-
         setGameResult(resultData);
 
         const batch = writeBatch(firestore);
-        const userBalancesToUpdate: { [userId: string]: number } = {};
+        const userPayouts: { [userId: string]: number } = {};
 
         for (const bet of activeBetsData) {
             const betDocRef = doc(firestore, 'bets', bet.id);
@@ -228,43 +229,46 @@ export default function GameArea() {
 
             if (didWin) {
                 batch.update(betDocRef, { status: 'win', won: true, payout: payout });
-                if (!userBalancesToUpdate[bet.userId]) userBalancesToUpdate[bet.userId] = 0;
-                userBalancesToUpdate[bet.userId] += payout;
+                userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
             } else {
                 batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
             }
         }
-        
-        const userDocsToUpdate = await Promise.all(
-            Object.keys(userBalancesToUpdate).map(uid => getDoc(doc(firestore, 'users', uid)))
-        );
-
-        userDocsToUpdate.forEach(userDoc => {
-            if(userDoc.exists()) {
-                const userRef = userDoc.ref;
-                const currentData = userDoc.data() as User;
-                const payout = userBalancesToUpdate[userDoc.id];
-                batch.update(userRef, { balance: (currentData.balance || 0) + payout });
-            }
-        });
         
         const gameRoundRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(gameRoundRef, resultData);
 
         await batch.commit();
 
-        if (user && user.uid in userBalancesToUpdate) {
-            const currentUserPayout = userBalancesToUpdate[user.uid];
-            if (currentUserPayout > 0) {
-                toast({ title: "You Won!", description: `INR ${currentUserPayout.toFixed(2)} has been added to your wallet.` });
-            }
+        // Update user balances in a separate, safer batch
+        if (Object.keys(userPayouts).length > 0) {
+            const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
+                const userToUpdateRef = doc(firestore, 'users', uid);
+                const payoutAmount = userPayouts[uid];
+                try {
+                    const userDoc = await getDoc(userToUpdateRef);
+                    if (userDoc.exists()) {
+                        const currentBalance = userDoc.data().balance || 0;
+                        await updateDoc(userToUpdateRef, { balance: currentBalance + payoutAmount });
+
+                        if(user && uid === user.uid && payoutAmount > 0) {
+                            toast({ title: "You Won!", description: `INR ${payoutAmount.toFixed(2)} has been added to your wallet.` });
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Failed to update balance for user ${uid}:`, e);
+                }
+            });
+            await Promise.allSettled(userUpdatePromises); // Prevents one failure from crashing all updates
         }
 
     } catch(serverError: any) {
         console.error("Error in handleRoundEnd: ", serverError);
+        // This is a critical server-side error. Emitting a general error.
         const permissionError = new FirestorePermissionError({
-            path: 'bets or game_rounds or users',
+            path: 'bets/game_rounds/users',
             operation: 'write',
+            requestResourceData: { roundId: currentRoundId, message: "Failed during result calculation." }
         });
         errorEmitter.emit('permission-error', permissionError);
     }

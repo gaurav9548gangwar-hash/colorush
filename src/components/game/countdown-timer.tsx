@@ -5,11 +5,10 @@ import { useState, useEffect } from "react";
 
 // Duration in seconds for each phase
 const BETTING_DURATION = 40;
-const LOCKED_DURATION = 20; // Increased to make the "locked" phase more noticeable
-const RESULT_DURATION = 0; // Result phase removed, calculation happens at the end of locked phase
+const LOCKED_DURATION = 20;
 const TOTAL_DURATION = BETTING_DURATION + LOCKED_DURATION;
 
-type GamePhase = "betting" | "locked" | "result";
+type GamePhase = "betting" | "locked";
 
 export default function CountdownTimer({ 
   onRoundEnd,
@@ -23,52 +22,54 @@ export default function CountdownTimer({
   const [totalSeconds, setTotalSeconds] = useState(TOTAL_DURATION);
   const [phase, setPhase] = useState<GamePhase>("betting");
 
+  // This effect resets the timer whenever a new round starts (i.e., roundId changes).
   useEffect(() => {
-    // Main interval for the round
+    setTotalSeconds(TOTAL_DURATION);
+    setPhase("betting");
+  }, [roundId]);
+
+  // This is the main timer interval.
+  useEffect(() => {
     const interval = setInterval(() => {
       setTotalSeconds((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [roundId]); // Reset interval when roundId changes
+  }, [roundId]); // It also resets if the roundId changes.
 
+  // This effect handles phase transitions and event emissions.
   useEffect(() => {
-    // When timer hits 0, trigger new round logic and reset timer
+    // When the timer hits 0, it triggers the start of a new round.
     if (totalSeconds === 0) {
       onNewRound();
-      setTotalSeconds(TOTAL_DURATION);
-      setPhase('betting');
-    }
-  }, [totalSeconds, onNewRound]);
-
-
-  useEffect(() => {
-    // Logic to determine the current phase
-    if (totalSeconds > LOCKED_DURATION) {
-      setPhase("betting");
-    } else { // totalSeconds <= LOCKED_DURATION
+    } else if (totalSeconds <= LOCKED_DURATION) {
+      // When the timer enters the locked duration...
       if (phase === "betting") {
-         // This is the moment the betting phase ends and locked phase begins.
-         // Trigger the round end logic to calculate results immediately.
-         onRoundEnd();
+        // And if the *previous* phase was 'betting', it means we just transitioned.
+        // This is the precise moment to trigger the end-of-round logic.
+        onRoundEnd();
       }
       setPhase("locked");
+    } else {
+      // Any other time, it's the betting phase.
+      setPhase("betting");
     }
-  }, [totalSeconds, onRoundEnd, phase]);
+  }, [totalSeconds, phase, onRoundEnd, onNewRound]);
 
 
   const getDisplayTime = () => {
     let secondsInPhase;
     switch(phase) {
       case 'betting':
+        // Shows time remaining in the betting phase
         secondsInPhase = totalSeconds - LOCKED_DURATION;
         break;
       case 'locked':
+        // Shows time remaining until the next round starts
         secondsInPhase = totalSeconds;
         break;
-      // Result phase is no longer displayed in the timer
       default:
-        secondsInPhase = totalSeconds;
+        secondsInPhase = 0;
     }
     const minutes = Math.floor(secondsInPhase / 60);
     const remainingSeconds = secondsInPhase % 60;

@@ -19,25 +19,22 @@ service cloud.firestore {
       // A user can create their own profile document.
       allow create: if isOwner(userId);
       
-      // A user can only read and update their own profile. Admin can read/update any.
-      allow read, update: if isOwner(userId) || isAdmin();
+      // An admin can read any user's data. A user can only read their own.
+      allow read: if isOwner(userId) || isAdmin();
 
-      // Admin can list all users for the admin panel.
-      allow list: if isAdmin();
+      // A user can only update their own profile. Admin can update any.
+      allow update: if isOwner(userId) || isAdmin();
       
       // A user can delete their own profile.
       allow delete: if isOwner(userId);
     }
 
     match /deposits/{depositId} {
+      // An admin can read all deposit requests (list and get).
+      allow read: if isAdmin();
+      
       // A user can create their own deposit request.
       allow create: if request.auth.uid == request.resource.data.userId;
-
-      // An admin can list all deposit requests for the panel.
-      allow list: if isAdmin();
-      
-      // An admin can get a specific request. A user can get their own.
-      allow get: if isAdmin() || request.auth.uid == resource.data.userId;
       
       // Only an admin can update (approve/reject) a deposit request.
       allow update: if isAdmin();
@@ -47,14 +44,11 @@ service cloud.firestore {
     }
 
      match /withdrawals/{withdrawalId} {
+      // An admin can read all withdrawal requests (list and get).
+      allow read: if isAdmin();
+      
       // A user can create their own withdrawal request.
       allow create: if request.auth.uid == request.resource.data.userId;
-
-      // An admin can list all withdrawal requests for the panel.
-      allow list: if isAdmin();
-      
-      // An admin can get a specific request. A user can get their own.
-      allow get: if isAdmin() || request.auth.uid == resource.data.userId;
       
       // Only an admin can update (approve/reject) a withdrawal request.
       allow update: if isAdmin();

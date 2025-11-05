@@ -25,7 +25,7 @@ import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase";
-import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, collectionGroup, setDoc, Timestamp, addDoc } from "firebase/firestore";
+import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, Timestamp, addDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -38,55 +38,56 @@ type BetSelection = {
   value: string | number | null;
 };
 
+// Represents a bet fetched from Firestore for result calculation
 type PlacedBetInfo = {
     id: string;
+    userId: string;
     amount: number;
     choice: string;
-    userId: string;
 }
 
 export default function GameArea() {
-  const [selection, setSelection] = useState<BetSelection>({
-    type: null,
-    value: null,
-  });
+  const [selection, setSelection] = useState<BetSelection>({ type: null, value: null });
   const [betAmount, setBetAmount] = useState(10);
-  const [gameResult, setGameResult] = useState<GameResult | null>(null);
-  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
-
+  const [gameResult, setGameResult] = useState<GameResult | null>(null);
+  
+  // State for the current round ID. Initialized client-side to prevent hydration errors.
+  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
   useEffect(() => {
-    // Initialize the round ID on the client to prevent hydration mismatch
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
 
+  // Memoized reference to the current user's document
   const userRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
     return doc(firestore, 'users', user.uid);
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
+  // Memoized query for the last 10 game results
   const gameRoundsRef = useMemoFirebase(() => firestore ? query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10)) : null, [firestore]);
   const { data: pastResults } = useCollection<GameResult>(gameRoundsRef);
   
+  // Memoized query for the current user's last 10 bets from the top-level 'bets' collection
   const userBetsRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
-    // Query the top-level 'bets' collection
     return query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
   }, [user, firestore]);
   const { data: userBets } = useCollection<Bet>(userBetsRef);
 
-
+  // Handler to select a bet option
   const handleSelection = (type: 'color' | 'number', value: string | number) => {
-    if(isBettingLocked) return;
+    if (isBettingLocked) return;
     setSelection({ type, value });
   };
 
   const isBetReady = selection.type !== null && betAmount > 0;
 
+  // Handler to place a bet
   const handlePlaceBet = async () => {
     if (!user || !firestore || !userData || !currentRoundId) {
       toast({ variant: "destructive", title: "Please log in to place a bet." });
@@ -108,13 +109,14 @@ export default function GameArea() {
     try {
       const newBalance = userData.balance - betAmount;
       if (userRef) {
+        // Deduct balance immediately for better UX
         await updateDoc(userRef, { balance: newBalance });
       }
       
-      // Use the top-level 'bets' collection
       const newBetRef = collection(firestore, `bets`);
       const betChoice = `${selection.type}:${selection.value}`;
 
+      // Create the bet document in the top-level 'bets' collection
       const betData: Omit<Bet, 'id'> = {
         userId: user.uid,
         roundId: currentRoundId,
@@ -129,56 +131,69 @@ export default function GameArea() {
       await addDoc(newBetRef, betData);
 
       toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
-      setSelection({ type: null, value: null });
-      setBetAmount(10);
+      setSelection({ type: null, value: null }); // Reset selection after bet
+      
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      if(userRef && userData) await updateDoc(userRef, { balance: userData.balance });
+      // Revert balance if bet placement fails
+      if (userRef && userData) await updateDoc(userRef, { balance: userData.balance });
     }
   };
   
- const handleRoundEnd = async () => {
+  // This function is triggered when the betting phase ends. It calculates and saves the results.
+  const handleRoundEnd = async () => {
     if (!firestore || !currentRoundId) return;
-    setIsBettingLocked(true); 
-    
+
+    setIsBettingLocked(true); // Lock betting UI
+
     try {
-        const allBetsQuery = query(
+        // Query for all bets placed in the current round from the top-level 'bets' collection.
+        // This query does NOT require a composite index if it's just on one field.
+        const allBetsInRoundQuery = query(
             collection(firestore, 'bets'),
             where('roundId', '==', currentRoundId)
         );
-        const allBetsSnapshot = await getDocs(allBetsQuery);
+        const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
 
-        const activeBetsInRound = allBetsSnapshot.docs.filter(doc => doc.data().status === 'active');
-        
-        const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
-        const allBetsData: PlacedBetInfo[] = [];
-
-        activeBetsInRound.forEach(doc => {
+        const activeBetsData: PlacedBetInfo[] = [];
+        allBetsSnapshot.forEach(doc => {
             const data = doc.data();
-            allBetsData.push({ id: doc.id, userId: data.userId, amount: data.amount, choice: data.choice });
-            if (data.choice.startsWith('color:')) {
-                const color = data.choice.split(':')[1];
+            if (data.status === 'active') {
+                activeBetsData.push({ id: doc.id, userId: data.userId, amount: data.amount, choice: data.choice });
+            }
+        });
+
+        // Smart winning logic: The color with the least amount bet on it wins.
+        const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
+        activeBetsData.forEach(bet => {
+            if (bet.choice.startsWith('color:')) {
+                const color = bet.choice.split(':')[1];
                 if (color in colorTotals) {
-                    colorTotals[color] += data.amount;
+                    colorTotals[color] += bet.amount;
                 }
             }
         });
         
         let winningColor: 'green' | 'orange' | 'white';
-        if (allBetsData.length === 0) {
+        // If no bets, pick a random color
+        if (activeBetsData.length === 0) {
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         } else {
+            // Find the minimum bet amount among the colors
             const minBet = Math.min(...Object.values(colorTotals));
+            // Find all colors that have this minimum bet amount
             const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(
                 color => colorTotals[color] === minBet
             );
+            // Pick a random color from the tied ones
             winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
         }
         
         const winningNumber = Math.floor(Math.random() * 10);
         
+        // Final result object to be saved
         const resultData: GameResult = {
             id: currentRoundId,
             gameId: currentRoundId,
@@ -188,12 +203,14 @@ export default function GameArea() {
             status: 'finished'
         };
 
-        setGameResult(resultData);
+        setGameResult(resultData); // Show result in the UI
 
+        // Use a Firestore batch to update everything atomically
         const batch = writeBatch(firestore);
         const userBalancesToUpdate: { [userId: string]: number } = {};
 
-        for (const bet of allBetsData) {
+        // Process each bet to determine win/loss and calculate payouts
+        for (const bet of activeBetsData) {
             const betDocRef = doc(firestore, 'bets', bet.id);
             const [betType, betValue] = bet.choice.split(':');
             let didWin = false;
@@ -201,20 +218,22 @@ export default function GameArea() {
 
             if (betType === 'color' && betValue === winningColor) {
                 didWin = true;
-                payout = bet.amount * 2;
+                payout = bet.amount * 2; // 2x payout for color
             } else if (betType === 'number' && Number(betValue) === winningNumber) {
                 didWin = true;
-                payout = bet.amount * 9;
+                payout = bet.amount * 9; // 9x payout for number
             }
 
             if (didWin) {
                 batch.update(betDocRef, { status: 'win', won: true, payout: payout });
+                // Aggregate payouts per user
                 userBalancesToUpdate[bet.userId] = (userBalancesToUpdate[bet.userId] || 0) + payout;
             } else {
                 batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
             }
         }
 
+        // Fetch all winning users' data to update their balances
         const userIds = Object.keys(userBalancesToUpdate);
         if (userIds.length > 0) {
             const userDocs = await Promise.all(userIds.map(id => getDoc(doc(firestore, 'users', id))));
@@ -230,36 +249,38 @@ export default function GameArea() {
             });
         }
         
+        // Save the final game round result
         const gameRoundRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(gameRoundRef, resultData);
 
+        // Commit all changes at once
         await batch.commit();
 
-        const currentUserBets = allBetsData.filter(b => b.userId === user?.uid);
-        if (currentUserBets.length > 0) {
-            const currentUserTotalPayout = userBalancesToUpdate[user!.uid] || 0;
-            if (currentUserTotalPayout > 0) {
-                toast({ title: "You Won!", description: `INR ${currentUserTotalPayout.toFixed(2)} has been added to your wallet.` });
-            } else {
-                toast({ title: "You Lost", description: "Better luck next time!", variant: 'destructive' });
-            }
+        // Show toast notification to the current user if they won
+        const currentUserPayout = userBalancesToUpdate[user!.uid] || 0;
+        if (currentUserPayout > 0) {
+            toast({ title: "You Won!", description: `INR ${currentUserPayout.toFixed(2)} has been added to your wallet.` });
         }
 
     } catch(serverError: any) {
+        // This is a fallback error handler in case of unexpected issues, like permissions.
+        toast({ variant: "destructive", title: "Error Calculating Results", description: "An unexpected error occurred. Please check console." });
+        console.error("Error in handleRoundEnd: ", serverError);
+        // Emit a permission error for debugging, just in case.
         const permissionError = new FirestorePermissionError({
-            path: `bets`,
+            path: 'bets',
             operation: 'list',
         });
         errorEmitter.emit('permission-error', permissionError);
-        toast({ variant: "destructive", title: "Error Calculating Results", description: "Could not fetch bet data. Check permissions." });
-        console.error("Error in handleRoundEnd: ", serverError);
     }
   };
   
+  // This function is triggered when the timer hits zero, preparing for a new round.
   const handleNewRound = () => {
-    setGameResult(null);
-    setIsBettingLocked(false);
-    setCurrentRoundId(`round_${new Date().getTime()}`);
+    setGameResult(null); // Clear the result from the screen
+    setIsBettingLocked(false); // Unlock the betting UI
+    setSelection({ type: null, value: null }); // Reset bet selection
+    setCurrentRoundId(`round_${new Date().getTime()}`); // Generate a new, unique round ID
   }
 
   return (
@@ -395,12 +416,12 @@ export default function GameArea() {
                   <TableCell className="text-xs capitalize">{bet.choice.replace(':', ': ')}</TableCell>
                   <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
                   <TableCell>
-                    <Badge variant={bet.status === 'win' ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
+                    <Badge variant={bet.won ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
                           {bet.status}
                       </Badge>
                   </TableCell>
-                  <TableCell className="text-right text-green-400">
-                      {bet.status === 'win' ? `+INR ${bet.payout.toFixed(2)}` : 'INR 0.00'}
+                  <TableCell className={cn("text-right", bet.won ? "text-green-400" : "")}>
+                      {bet.won ? `+INR ${bet.payout.toFixed(2)}` : 'INR 0.00'}
                   </TableCell>
                 </TableRow>
               ))}
@@ -435,3 +456,5 @@ export default function GameArea() {
     </section>
   );
 }
+
+    

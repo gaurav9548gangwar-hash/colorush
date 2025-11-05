@@ -10,8 +10,10 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"
 import { useFirebase } from "@/firebase"
-import { doc, setDoc } from "firebase/firestore"
+import { doc, setDoc, serverTimestamp } from "firebase/firestore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FirestorePermissionError } from "@/firebase/errors"
+import { errorEmitter } from "@/firebase/error-emitter"
 
 export default function LoginPage() {
   const [name, setName] = useState("")
@@ -22,39 +24,47 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const router = useRouter()
-  const { auth, firestore, user } = useFirebase() 
+  const { auth, firestore, user, isUserLoading } = useFirebase() 
   const { toast } = useToast()
 
   useEffect(() => {
-    if (user) {
+    if (!isUserLoading && user) {
         router.push("/dashboard");
     }
-  }, [user, router]);
+  }, [user, isUserLoading, router]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!auth || !firestore) return
     setIsSubmitting(true)
+    // Create a unique email-like ID for Firebase Auth from the phone number
     const emailId = `${phone}@tiranga.in`
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
-      const user = userCredential.user
+      const newUser = userCredential.user
 
       const userData = {
-        id: user.uid,
+        id: newUser.uid,
         name: name,
         phone: phone,
         emailId: emailId,
         balance: 0,
         createdAt: new Date().toISOString()
       };
-      await setDoc(doc(firestore, "users", user.uid), userData)
       
-      toast({ title: "Registration Successful" })
-      router.push("/dashboard")
+      // Save the user data to Firestore
+      const userDocRef = doc(firestore, "users", newUser.uid);
+      await setDoc(userDocRef, userData);
+      
+      toast({ title: "Registration Successful", description: "Welcome! Your account has been created." })
+      // Don't need to push, useEffect will handle it
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Registration Failed", description: error.message })
+        if (error.code === 'auth/email-already-in-use') {
+            toast({ variant: "destructive", title: "Registration Failed", description: "This phone number is already registered. Please log in." })
+        } else {
+            toast({ variant: "destructive", title: "Registration Failed", description: error.message })
+        }
     } finally {
       setIsSubmitting(false)
     }
@@ -69,7 +79,7 @@ export default function LoginPage() {
     try {
         await signInWithEmailAndPassword(auth, emailId, loginPassword)
         toast({ title: "Login Successful" })
-        router.push("/dashboard")
+        // Don't need to push, useEffect will handle it
     } catch (error: any) {
         toast({ variant: "destructive", title: "Login Failed", description: "Invalid phone number or password." })
     } finally {
@@ -77,6 +87,10 @@ export default function LoginPage() {
     }
   }
 
+  // Render a loading state while checking for existing user
+  if (isUserLoading || user) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
 
   return (
     <Card className="w-full max-w-sm">
@@ -120,7 +134,7 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" type="tel" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} required pattern="\d{10}" title="Phone number must be 10 digits"/>
+                    <Input id="phone" type="tel" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} required pattern="\\d{10}" title="Phone number must be 10 digits"/>
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>

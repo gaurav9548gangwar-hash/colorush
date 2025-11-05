@@ -53,7 +53,7 @@ service cloud.firestore {
     
     match /users/{userId}/bets/{betId} {
       // A user can manage their own bets.
-      allow create, update, delete, read: if isOwner(userId);
+      allow read, create, update, delete: if isOwner(userId);
       // Allow collection group queries on bets for the game logic.
       allow list: if true;
     }
@@ -68,7 +68,7 @@ service cloud.firestore {
       // round result, and anyone can read it. In a production app, writes
       // should be locked down to a trusted server environment.
       allow read: if true;
-      allow write: if false;
+      allow write: if true;
     }
   }
 }

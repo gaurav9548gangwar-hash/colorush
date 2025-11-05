@@ -20,6 +20,15 @@ import type { User } from '@/lib/types'
 const UPI_ID = 'colourtrest99955@ptyes'
 const MIN_DEPOSIT = 200
 
+// Simple inline SVG for Telegram icon
+const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M22 2L11 13" />
+        <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+    </svg>
+);
+
+
 export default function RechargePage() {
   const { firestore, user, isUserLoading } = useFirebase()
   const router = useRouter()
@@ -131,34 +140,42 @@ export default function RechargePage() {
                     <p>3. After payment, copy the Transaction ID and submit the form below.</p>
                 </AlertDescription>
             </Alert>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="amount">Amount Sent</Label>
-                    <Input 
-                        id="amount" 
-                        type="number"
-                        value={amount}
-                        onChange={(e) => setAmount(Number(e.target.value))}
-                        placeholder={`e.g. ${MIN_DEPOSIT}`}
-                        min={MIN_DEPOSIT}
-                        required
-                    />
-                </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="transactionId">UPI Transaction ID / Ref. No.</Label>
-                    <Input 
-                        id="transactionId" 
-                        type="text"
-                        value={transactionId}
-                        onChange={(e) => setTransactionId(e.target.value)}
-                        placeholder="Enter the 12-digit transaction ID"
-                        required
-                    />
-                </div>
-                 <Button type="submit" className="w-full" disabled={isSubmitting}>
-                    {isSubmitting ? 'Submitting Request...' : 'Submit Request'}
-                </Button>
-            </form>
+            <div className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                      <Label htmlFor="amount">Amount Sent</Label>
+                      <Input 
+                          id="amount" 
+                          type="number"
+                          value={amount}
+                          onChange={(e) => setAmount(Number(e.target.value))}
+                          placeholder={`e.g. ${MIN_DEPOSIT}`}
+                          min={MIN_DEPOSIT}
+                          required
+                      />
+                  </div>
+                   <div className="space-y-2">
+                      <Label htmlFor="transactionId">UPI Transaction ID / Ref. No.</Label>
+                      <Input 
+                          id="transactionId" 
+                          type="text"
+                          value={transactionId}
+                          onChange={(e) => setTransactionId(e.target.value)}
+                          placeholder="Enter the 12-digit transaction ID"
+                          required
+                      />
+                  </div>
+                   <Button type="submit" className="w-full" disabled={isSubmitting}>
+                      {isSubmitting ? 'Submitting Request...' : 'Submit Request'}
+                  </Button>
+              </form>
+              <Button variant="outline" className="w-full" asChild>
+                <a href="https://t.me/Tirangaavingo" target="_blank" rel="noopener noreferrer">
+                  <TelegramIcon className="mr-2 h-4 w-4" />
+                  Contact us on Telegram
+                </a>
+              </Button>
+            </div>
         </CardContent>
         <CardFooter>
             <p className="text-xs text-muted-foreground text-center w-full">Your balance will be updated after we verify your payment. This may take a few minutes.</p>

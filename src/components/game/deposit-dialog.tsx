@@ -77,7 +77,7 @@ export default function DepositDialog() {
       requestedAt: new Date().toISOString(),
       screenshotUrl: "",
     }).then(newDepositDoc => {
-      // 2. Give immediate feedback to the user and start background upload
+      // 2. Give immediate feedback to the user and close dialog
       toast({
         title: "Request Submitted!",
         description: "Your deposit is being processed. You can check the status in your history.",
@@ -86,7 +86,7 @@ export default function DepositDialog() {
       resetForm();
       setIsSubmitting(false);
 
-      // 3. Start background upload task
+      // 3. Start background upload and update task
       if (screenshotFile) {
         const fileId = uuidv4();
         const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);

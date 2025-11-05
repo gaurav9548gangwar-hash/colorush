@@ -64,7 +64,7 @@ service cloud.firestore {
       allow read: if true;
       // In a production app, writes should be locked down to a trusted server environment.
       // For this app, we allow any authenticated user to create game results for simplicity.
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
   }
 }

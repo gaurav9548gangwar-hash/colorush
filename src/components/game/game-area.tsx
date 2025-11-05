@@ -51,11 +51,14 @@ export default function GameArea() {
     value: null,
   });
   const [betAmount, setBetAmount] = useState(10);
-  const [betsThisRound, setBetsThisRound] = useState<PlacedBetInfo[]>([]);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
-  const [showResultEmoji, setShowResultEmoji] = useState<'win' | 'loss' | null>(null);
-  const [currentRoundId, setCurrentRoundId] = useState<string>(`round_${new Date().getTime()}`);
+  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
+
+  useEffect(() => {
+    // Initialize the round ID on the client to prevent hydration mismatch
+    setCurrentRoundId(`round_${new Date().getTime()}`);
+  }, []);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
@@ -83,7 +86,7 @@ export default function GameArea() {
   const isBetReady = selection.type !== null && betAmount > 0;
 
   const handlePlaceBet = async () => {
-    if (!user || !firestore || !userData) {
+    if (!user || !firestore || !userData || !currentRoundId) {
       toast({ variant: "destructive", title: "Please log in to place a bet." });
       return;
     }
@@ -103,8 +106,6 @@ export default function GameArea() {
     try {
       const newBalance = userData.balance - betAmount;
       if (userRef) {
-        // Optimistically update the user's balance locally for a faster UI response.
-        // The server-side update will happen in handleRoundEnd.
         await updateDoc(userRef, { balance: newBalance });
       }
 
@@ -117,14 +118,12 @@ export default function GameArea() {
         choice: betChoice,
         amount: betAmount,
         status: 'active',
-        createdAt: Timestamp.now(), // Use client-side timestamp for immediate sorting
+        createdAt: Timestamp.now(),
         payout: 0,
         won: false,
       };
 
       await setDoc(newBetRef, betData);
-      
-      setBetsThisRound(prev => [...prev, { id: newBetRef.id, amount: betAmount, choice: betChoice, userId: user.uid }]);
 
       toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
       setSelection({ type: null, value: null });
@@ -132,64 +131,49 @@ export default function GameArea() {
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      // If the bet fails, revert the optimistic balance update
       if(userRef && userData) await updateDoc(userRef, { balance: userData.balance });
     }
   };
   
-  const handleRoundEnd = async () => {
+ const handleRoundEnd = async () => {
     if (!firestore || !currentRoundId) return;
     setIsBettingLocked(true); 
-
-    const allUsersBetsQuery = query(
-        collectionGroup(firestore, 'bets'),
-        where('roundId', '==', currentRoundId),
-        where('status', '==', 'active')
-    );
-
+    
     try {
-        const allBetsSnapshot = await getDocs(allUsersBetsQuery);
+        const allBetsQuery = query(
+            collectionGroup(firestore, 'bets'),
+            where('roundId', '==', currentRoundId),
+            where('status', '==', 'active')
+        );
+        const allBetsSnapshot = await getDocs(allBetsQuery);
+
+        const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
         const allBetsInRound: PlacedBetInfo[] = [];
         allBetsSnapshot.forEach(doc => {
             const data = doc.data();
-            allBetsInRound.push({
-                id: doc.id,
-                userId: data.userId,
-                amount: data.amount,
-                choice: data.choice,
-            });
+            allBetsInRound.push({ id: doc.id, userId: data.userId, amount: data.amount, choice: data.choice });
+            if (data.choice.startsWith('color:')) {
+                const color = data.choice.split(':')[1];
+                if (color in colorTotals) {
+                    colorTotals[color] += data.amount;
+                }
+            }
         });
-
-        // --- Winning Logic ---
-        let winningColor: 'green' | 'orange' | 'white';
-        const colorTotals = { green: 0, orange: 0, white: 0 };
         
-        const colorBets = allBetsInRound.filter(bet => bet.choice.startsWith('color:'));
-
-        if (colorBets.length === 0) {
-            // No color bets placed, pick a random color
+        let winningColor: 'green' | 'orange' | 'white';
+        if (allBetsInRound.length === 0) {
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         } else {
-            colorBets.forEach(bet => {
-                const betColor = bet.choice.split(':')[1] as keyof typeof colorTotals;
-                if (betColor && colorTotals.hasOwnProperty(betColor)) {
-                    colorTotals[betColor] += bet.amount;
-                }
-            });
-
-            // Find the minimum bet amount among the colors
             const minBet = Math.min(...Object.values(colorTotals));
-            // Find all colors that have this minimum bet amount
-            const tiedColors = (Object.keys(colorTotals) as (keyof typeof colorTotals)[]).filter(
+            const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(
                 color => colorTotals[color] === minBet
             );
-            // Randomly select one of the tied colors as the winner
             winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
         }
         
         const winningNumber = Math.floor(Math.random() * 10);
-
+        
         const resultData: GameResult = {
             id: currentRoundId,
             gameId: currentRoundId,
@@ -202,59 +186,54 @@ export default function GameArea() {
         setGameResult(resultData);
 
         const batch = writeBatch(firestore);
-        const userPayouts: { [userId: string]: number } = {};
-        
-        // --- Payout Logic ---
+        const userBalancesToUpdate: { [userId: string]: number } = {};
+
         for (const bet of allBetsInRound) {
-            const [betType, betValue] = bet.choice.split(':');
             const betDocRef = doc(firestore, 'users', bet.userId, 'bets', bet.id);
-            let payout = 0;
+            const [betType, betValue] = bet.choice.split(':');
             let didWin = false;
+            let payout = 0;
 
             if (betType === 'color' && betValue === winningColor) {
+                didWin = true;
                 payout = bet.amount * 2;
-                didWin = true;
             } else if (betType === 'number' && Number(betValue) === winningNumber) {
-                payout = bet.amount * 9;
                 didWin = true;
+                payout = bet.amount * 9;
             }
 
             if (didWin) {
-                batch.update(betDocRef, { status: 'win', won: true, payout });
-                // Accumulate payouts per user
-                userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
+                batch.update(betDocRef, { status: 'win', won: true, payout: payout });
+                userBalancesToUpdate[bet.userId] = (userBalancesToUpdate[bet.userId] || 0) + payout;
             } else {
                 batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
             }
         }
-        
-        // --- Update User Balances ---
-        for (const userId in userPayouts) {
-            const userToUpdateRef = doc(firestore, 'users', userId);
-            const payoutAmount = userPayouts[userId];
-            // We need to fetch the current balance to add to it safely
-            const userDoc = await getDoc(userToUpdateRef);
-            if(userDoc.exists()) {
-                const currentBalance = userDoc.data().balance || 0;
-                batch.update(userToUpdateRef, { balance: currentBalance + payoutAmount });
-            }
+
+        const userIds = Object.keys(userBalancesToUpdate);
+        if (userIds.length > 0) {
+            const userDocs = await Promise.all(userIds.map(id => getDoc(doc(firestore, 'users', id))));
+            userDocs.forEach(userDoc => {
+                if (userDoc.exists()) {
+                    const userRef = userDoc.ref;
+                    const userData = userDoc.data() as User;
+                    const payout = userBalancesToUpdate[userDoc.id];
+                    batch.update(userRef, { balance: (userData.balance || 0) + payout });
+                }
+            });
         }
         
-        // Save the final game round result
         const gameRoundRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(gameRoundRef, resultData);
 
         await batch.commit();
 
-        // --- Show UI feedback ---
         const currentUserBets = allBetsInRound.filter(b => b.userId === user?.uid);
         if (currentUserBets.length > 0) {
-            const currentUserTotalPayout = userPayouts[user!.uid] || 0;
+            const currentUserTotalPayout = userBalancesToUpdate[user!.uid] || 0;
             if (currentUserTotalPayout > 0) {
-                setShowResultEmoji('win');
                 toast({ title: "You Won!", description: `INR ${currentUserTotalPayout.toFixed(2)} has been added to your wallet.` });
             } else {
-                setShowResultEmoji('loss');
                 toast({ title: "You Lost!", variant: 'destructive' });
             }
         }
@@ -271,32 +250,20 @@ export default function GameArea() {
   };
   
   const handleNewRound = () => {
-    // This function gets called when the timer fully completes.
-    // It prepares the UI for the next round.
-    setBetsThisRound([]);
     setGameResult(null);
-    setShowResultEmoji(null);
     setIsBettingLocked(false);
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }
 
   return (
     <section className="space-y-4 relative">
-      {showResultEmoji && (
-         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 rounded-lg">
-            <p className="text-8xl animate-bounce">
-                {showResultEmoji === 'win' ? '🎉' : '😢'}
-            </p>
-         </div>
-      )}
-
       <div className="flex items-center justify-between p-4 rounded-lg bg-background/30">
         <div>
           <p className="text-sm text-gray-400">Win Go 1 Min</p>
-          <p className="text-lg font-bold">{currentRoundId}</p>
+          <p className="text-lg font-bold">{currentRoundId || 'Loading...'}</p>
         </div>
         <div className="text-right">
-          <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} roundId={currentRoundId} />
+          {currentRoundId && <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} roundId={currentRoundId} />}
         </div>
       </div>
       

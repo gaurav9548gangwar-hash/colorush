@@ -77,22 +77,28 @@ export function GameArea() {
             } else if (bet.type === 'number' && betNum !== -1) {
                 payout = bet.amount * 9;
                 potentialPayouts[betNum] += payout;
-                const colorOfNum = getWinningColor(betNum);
-                potentialPayouts[colorOfNum] += payout;
             } else if (bet.type === 'size') {
                 payout = bet.amount * 2;
                 potentialPayouts[bet.target as BetSize] += payout;
             }
         });
         
-        const colorPayouts = [
-            { color: 'green', payout: potentialPayouts.green },
-            { color: 'orange', payout: potentialPayouts.orange },
-            { color: 'white', payout: potentialPayouts.white },
-        ];
-        
-        colorPayouts.sort((a,b) => a.payout - b.payout);
-        const leastPayoutColor = colorPayouts[0].color as BetColor;
+        const combinedColorPayouts = {
+            green: potentialPayouts.green + potentialPayouts[1] + potentialPayouts[3] + potentialPayouts[7] + potentialPayouts[9],
+            orange: potentialPayouts.orange + potentialPayouts[2] + potentialPayouts[4] + potentialPayouts[6] + potentialPayouts[8],
+            white: potentialPayouts.white + potentialPayouts[0] + potentialPayouts[5]
+        }
+
+        let leastPayoutColor: BetColor = 'green';
+        let minPayout = combinedColorPayouts.green;
+
+        if (combinedColorPayouts.orange < minPayout) {
+            minPayout = combinedColorPayouts.orange;
+            leastPayoutColor = 'orange';
+        }
+        if (combinedColorPayouts.white < minPayout) {
+            leastPayoutColor = 'white';
+        }
 
         const possibleNumbers = {
             green: [1, 3, 7, 9],
@@ -110,7 +116,7 @@ export function GameArea() {
             winningNumber,
             winningColor,
             winningSize,
-            endedAt: new Date(), // Use JS Date for UI, will be converted to server timestamp for DB
+            endedAt: new Date(),
         };
         
         setGameResult(resultData);
@@ -122,13 +128,12 @@ export function GameArea() {
         return; 
     }
 
-    // --- Start background processing for saving data ---
     try {
         const batch = writeBatch(firestore);
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(roundDocRef, {
             ...resultData,
-            endedAt: serverTimestamp() // Use server timestamp for DB
+            endedAt: serverTimestamp()
         });
   
         const userPayouts: { [userId: string]: number } = {};
@@ -154,7 +159,7 @@ export function GameArea() {
                 id: betDocRef.id,
                 status: hasWon ? 'win' : 'loss',
                 payout,
-                createdAt: serverTimestamp(), // Use server timestamp for consistency
+                createdAt: serverTimestamp(),
             });
     
             if (hasWon) {
@@ -162,16 +167,12 @@ export function GameArea() {
             }
         }
         
-        // Payouts must be done separately from the main batch
-        // because we can't read (to get current balance) and write in the same batch.
         await batch.commit();
 
-        // After batch is committed, update user balances
         for (const userId in userPayouts) {
             if (userPayouts[userId] > 0) {
                  const userRef = doc(firestore, "users", userId);
                  try {
-                     // Use increment for atomic and safe balance updates
                      await updateDoc(userRef, {
                          balance: increment(userPayouts[userId])
                      });
@@ -274,7 +275,7 @@ export function GameArea() {
             <PastResultsTab />
           </TabsContent>
           <TabsContent value="myBets">
-            {user && <MyBetsTab userId={user.uid} key={currentRoundId} />}
+            {user ? <MyBetsTab userId={user.uid} key={currentRoundId} /> : <p className="text-center py-4">Please log in to see your bets.</p>}
           </TabsContent>
         </Tabs>
       </CardContent>

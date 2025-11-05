@@ -4,13 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { CountdownTimer, LOCKED_DURATION } from './countdown-timer'
+import { CountdownTimer } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
 import { useFirebase } from '@/firebase'
-import type { Bet, BetColor, BetSize, BetTarget, GameResult, User } from '@/lib/types'
-import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp, getDoc, updateDoc, increment } from 'firebase/firestore'
+import type { Bet, BetColor, BetSize, BetTarget, GameResult } from '@/lib/types'
+import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp, updateDoc, increment } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
-import { v4 as uuidv4 } from 'uuid'
 import { PastResultsTab } from './past-results-tab'
 import { MyBetsTab } from './my-bets-tab'
 import { errorEmitter } from '@/firebase/error-emitter'
@@ -45,7 +44,6 @@ export function GameArea() {
     handleNewRound()
   }, [handleNewRound])
 
-
   const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
   
@@ -68,22 +66,24 @@ export function GameArea() {
             let payout = 0;
             if (bet.type === 'color') {
                 payout = bet.amount * (bet.target === 'white' ? 4.5 : 2);
+                 const color = bet.target as BetColor;
+                 potentialPayouts[color] += payout;
+
             } else if (bet.type === 'number') {
                 payout = bet.amount * 9;
+                const num = bet.target as number;
+                potentialPayouts[num] += payout;
+
+                // Add number payout to its corresponding color
+                const colorOfNum = getWinningColor(num);
+                potentialPayouts[colorOfNum] += payout;
+
             } else if (bet.type === 'size') {
                 payout = bet.amount * 2;
-            }
-    
-            if (bet.type === 'number') {
-                const num = bet.target as number;
-                const color = getWinningColor(num);
-                potentialPayouts[num] += payout;
-                potentialPayouts[color] += payout;
-            } else if (bet.type === 'color') {
-                 potentialPayouts[bet.target as BetColor] += payout;
+                potentialPayouts[bet.target as BetSize] += payout;
             }
         });
-
+        
         const colorPayouts = [
             { color: 'green', payout: potentialPayouts.green },
             { color: 'orange', payout: potentialPayouts.orange },
@@ -109,14 +109,19 @@ export function GameArea() {
             winningNumber,
             winningColor,
             winningSize,
-            endedAt: serverTimestamp() as any,
+            endedAt: serverTimestamp() as any, // This will be set on the server
         };
 
+        // Instantly display result on UI
         setGameResult(resultData);
     
+        // Update database in the background
         const batch = writeBatch(firestore);
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
-        batch.set(roundDocRef, resultData);
+        batch.set(roundDocRef, {
+            ...resultData,
+            endedAt: serverTimestamp() // ensure timestamp is set for db
+        });
   
         const userPayouts: { [userId: string]: number } = {};
 
@@ -148,23 +153,24 @@ export function GameArea() {
 
         await batch.commit();
 
-        // Separate balance updates after batch commit
+        // Separate balance updates for winners
         for (const userId in userPayouts) {
-            const userRef = doc(firestore, "users", userId);
-            try {
-                // Use increment for atomic update
-                await updateDoc(userRef, {
-                    balance: increment(userPayouts[userId])
-                });
-            } catch (e) {
-                 const contextualError = new FirestorePermissionError({
-                    path: userRef.path,
-                    operation: 'update',
-                    requestResourceData: { balance: `increment(${userPayouts[userId]})` },
-                 });
-                 errorEmitter.emit('permission-error', contextualError);
-                 console.error(`Failed to update balance for user ${userId}:`, e);
-                 toast({ variant: "destructive", title: "Balance Update Error", description: `Could not update balance for user ${userId}.` })
+            if (userPayouts[userId] > 0) {
+                 const userRef = doc(firestore, "users", userId);
+                 try {
+                     await updateDoc(userRef, {
+                         balance: increment(userPayouts[userId])
+                     });
+                 } catch (e) {
+                      const contextualError = new FirestorePermissionError({
+                         path: userRef.path,
+                         operation: 'update',
+                         requestResourceData: { balance: `increment(${userPayouts[userId]})` },
+                      });
+                      errorEmitter.emit('permission-error', contextualError);
+                      console.error(`Failed to update balance for user ${userId}:`, e);
+                      toast({ variant: "destructive", title: "Balance Update Error", description: `Could not update balance for user ${userId}.` })
+                 }
             }
         }
 
@@ -172,16 +178,21 @@ export function GameArea() {
       console.error("Error in handleRoundEnd: ", error);
       toast({ variant: "destructive", title: "Round Error", description: "Could not process round results." });
     } finally {
-      setIsProcessing(false);
+        setIsProcessing(false);
     }
   }, [firestore, currentRoundId, toast]);
 
   const renderResult = () => {
-    if (!gameResult) return null
+    if (!gameResult) {
+        if (isProcessing) {
+             return <div className="flex flex-col items-center justify-center space-y-4 p-8 rounded-lg bg-card-foreground/5"><p>Calculating result...</p></div>
+        }
+        return null;
+    }
 
     return (
       <div className="animate-in fade-in-50 flex flex-col items-center justify-center space-y-4 p-8 rounded-lg bg-card-foreground/5">
-        <h3 className="text-2xl font-bold">Round {gameResult.roundId.substring(0, 5)} Result</h3>
+        <h3 className="text-2xl font-bold">Round {gameResult.roundId.substring(9, 13)} Result</h3>
         <div className="flex items-center space-x-4">
           <div className="flex flex-col items-center">
             <span className="text-sm text-muted-foreground">Number</span>
@@ -206,7 +217,7 @@ export function GameArea() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div className="flex flex-col items-center justify-center">
             <p className="text-sm text-muted-foreground">Round ID</p>
-            <p className="text-lg font-semibold">{currentRoundId.substring(0, 13)}</p>
+            <p className="text-lg font-semibold">{currentRoundId.substring(9, 13)}</p>
           </div>
           <CountdownTimer 
             key={currentRoundId} 
@@ -215,11 +226,11 @@ export function GameArea() {
             onNewRound={handleNewRound}
           />
           <div className="flex items-center justify-center">
-            {/* Future content like "How to Play" can go here */}
+             <Button variant="outline" onClick={() => window.location.reload()}>Refresh Game</Button>
           </div>
         </div>
 
-        {isBettingLocked || isProcessing || gameResult ? (
+        {isBettingLocked || gameResult ? (
             renderResult()
         ) : (
           <div className="space-y-4 animate-in fade-in-20">

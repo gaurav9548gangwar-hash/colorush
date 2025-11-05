@@ -4,11 +4,11 @@
     "User": {
       "title": "User",
       "type": "object",
-      "description": "Represents a user in the Tiranga game.",
+      "description": "Represents a user in the application.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the user."
+          "description": "Unique identifier for the user (same as Firebase Auth UID)."
         },
         "phone": {
           "type": "string",
@@ -30,80 +30,9 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp of when the user account was created."
-        },
-        "password": {
-          "type": "string",
-          "description": "User's plain text password."
         }
       },
       "required": ["id", "phone", "emailId", "balance", "createdAt"]
-    },
-    "GameRound": {
-      "title": "GameRound",
-      "type": "object",
-      "description": "Represents a single round of a game.",
-      "properties": {
-        "id": { "type": "string", "description": "Unique identifier for the game round." },
-        "gameType": { "type": "string", "description": "Type of game (e.g., wingo1, wingo3)." },
-        "startTime": { "type": "string", "format": "date-time", "description": "Timestamp of when the game round started." },
-        "resultNumber": { "type": "number", "description": "The winning number for the round (0-9)." },
-        "resultColor": { "type": "string", "description": "The winning color for the round (green, orange, white)." },
-        "status": { "type": "string", "description": "Status of the game round (betting, locked, finished)." }
-      },
-      "required": ["id", "gameType", "startTime", "resultNumber", "resultColor", "status"]
-    },
-    "Bet": {
-      "title": "Bet",
-      "type": "object",
-      "description": "Represents a user's bet on a game round.",
-      "properties": {
-        "id": { "type": "string", "description": "Unique identifier for the bet." },
-        "userId": { "$ref": "#/entities/User" },
-        "roundId": { "$ref": "#/entities/GameRound" },
-        "choice": { "type": "string", "description": "The user's bet choice (e.g., color:green, number:5, big)." },
-        "amount": { "type": "number", "description": "The amount the user bet." },
-        "multiplier": { "type": "number", "description": "The multiplier applied to the bet." },
-        "won": { "type": "boolean", "description": "Indicates whether the user won the bet." },
-        "payout": { "type": "number", "description": "The payout amount if the user won." }
-      },
-      "required": ["id", "userId", "roundId", "choice", "amount", "multiplier", "won", "payout"]
-    },
-    "Deposit": {
-      "title": "Deposit",
-      "type": "object",
-      "description": "Represents a user's deposit request.",
-      "properties": {
-        "id": { "type": "string", "description": "Unique identifier for the deposit request." },
-        "userId": { "$ref": "#/entities/User" },
-        "amount": { "type": "number", "description": "The amount the user wants to deposit." },
-        "status": { "type": "string", "description": "Status of the deposit request (pending, approved, rejected)." },
-        "transactionId": { "type": "string", "description": "The payment transaction ID (UTR/Ref ID)." },
-        "requestedAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the deposit was requested." }
-      },
-      "required": ["id", "userId", "amount", "status", "transactionId", "requestedAt"]
-    },
-    "Withdrawal": {
-      "title": "Withdrawal",
-      "type": "object",
-      "description": "Represents a user's withdrawal request.",
-      "properties": {
-        "id": { "type": "string", "description": "Unique identifier for the withdrawal request." },
-        "userId": { "$ref": "#/entities/User" },
-        "amount": { "type": "number", "description": "The amount the user wants to withdraw." },
-        "upiBank": { "type": "string", "description": "UPI or Bank Details for withdrawal." },
-        "status": { "type": "string", "description": "Status of the withdrawal request (pending, approved, rejected)." },
-        "requestedAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the withdrawal was requested." }
-      },
-      "required": ["id", "userId", "amount", "upiBank", "status", "requestedAt"]
-    },
-    "Admin": {
-      "title": "Admin",
-      "type": "object",
-      "description": "Represents an administrator user role.",
-      "properties": {
-        "uid": { "type": "string", "description": "The Firebase UID of the user with admin role." }
-      },
-      "required": ["uid"]
     }
   },
   "auth": {
@@ -113,26 +42,6 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "Stores user profiles. Path-based ownership ensures data privacy."
-    },
-    "/game_rounds/{gameId}": {
-      "schema": { "$ref": "#/entities/GameRound" },
-      "description": "Publicly accessible information about each game round."
-    },
-    "/deposits/{depositId}": {
-      "schema": { "$ref": "#/entities/Deposit" },
-      "description": "Centralized collection for all user deposit requests. Admins have access, users can only create."
-    },
-    "/withdrawals/{withdrawalId}": {
-      "schema": { "$ref": "#/entities/Withdrawal" },
-      "description": "Centralized collection for all user withdrawal requests. Admins have access, users can only create."
-    },
-    "/bets/{betId}": {
-      "schema": { "$ref": "#/entities/Bet" },
-      "description": "Centralized, top-level collection for all bets from all users."
-    },
-    "/roles_admin/{adminId}": {
-      "schema": { "$ref": "#/entities/Admin" },
-      "description": "Maps user UIDs to admin roles. Existence of a document grants admin privileges."
     }
   }
 }

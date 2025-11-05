@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useEffect, useState } from "react"
@@ -19,8 +20,14 @@ export default function LoginPage() {
   const [isRegistered, setIsRegistered] = useState(false)
 
   const router = useRouter()
-  const { auth, firestore } = useFirebase() // Use the hook to get Firebase instances
+  const { auth, firestore, user } = useFirebase() 
   const { toast } = useToast()
+
+  useEffect(() => {
+    if (user) {
+        router.push("/");
+    }
+  }, [user, router]);
 
   useEffect(() => {
     const storedPhone = localStorage.getItem("tirangaUserPhone")
@@ -46,16 +53,14 @@ export default function LoginPage() {
         phone: phone,
         emailId: emailId,
         balance: 0,
-        createdAt: new Date().toISOString(),
-        password: password, // Save the password
+        createdAt: new Date().toISOString()
       })
       
-      // Save phone to local storage AFTER successful registration
       localStorage.setItem("tirangaUserPhone", phone)
-      setIsRegistered(true); // Switch to login view immediately
+      setIsRegistered(true);
 
       toast({ title: "Registration Successful" })
-      router.push("/dashboard")
+      router.push("/")
     } catch (error: any) {
       toast({ variant: "destructive", title: "Registration Failed", description: error.message })
     } finally {
@@ -72,7 +77,7 @@ export default function LoginPage() {
     try {
         await signInWithEmailAndPassword(auth, emailId, password)
         toast({ title: "Login Successful" })
-        router.push("/dashboard")
+        router.push("/")
     } catch (error: any) {
         toast({ variant: "destructive", title: "Login Failed", description: "Invalid password." })
     } finally {
@@ -84,7 +89,7 @@ export default function LoginPage() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold text-primary">Tiranga</CardTitle>
+        <CardTitle className="text-2xl font-bold text-primary">App</CardTitle>
         <CardDescription>{isRegistered ? "Welcome back! Please log in." : "Create your account"}</CardDescription>
       </CardHeader>
       <CardContent>

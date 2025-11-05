@@ -117,73 +117,92 @@ export default function GameArea() {
     setIsProcessing(true);
 
     try {
-      const allBetsInRoundQuery = query(collection(firestore, 'bets'), where('roundId', '==', currentRoundId), where('status', '==', 'active'));
-      const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
-      const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
+        const allBetsInRoundQuery = query(collection(firestore, 'bets'), where('roundId', '==', currentRoundId), where('status', '==', 'active'));
+        const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
+        const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
 
-      const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
-      activeBets.forEach(bet => {
-        if (bet.choice.startsWith('color:')) {
-          const color = bet.choice.split(':')[1];
-          if (color in colorTotals) colorTotals[color] += bet.amount * 2;
-        }
-      });
-
-      let winningColor: 'green' | 'orange' | 'white' = 'green';
-      if (activeBets.length > 0) {
-        const minPayout = Math.min(...Object.values(colorTotals));
-        const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minPayout);
-        winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
-      } else {
-         const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
-         winningColor = colors[Math.floor(Math.random() * colors.length)];
-      }
-
-      const winningNumber = Math.floor(Math.random() * 10);
-      const winningSize = winningNumber >= 5 ? 'big' : 'small';
-      
-      const resultData: GameResult = { id: currentRoundId, gameId: currentRoundId, resultNumber, resultColor: winningColor, resultSize: winningSize, startTime: new Date().toISOString(), status: 'finished' };
-      setGameResult(resultData);
-
-      const batch = writeBatch(firestore);
-      const userPayouts: { [userId: string]: number } = {};
-
-      activeBets.forEach(bet => {
-        const betDocRef = doc(firestore, 'bets', bet.id);
-        const [betType, betValue] = bet.choice.split(':');
-        let didWin = false; let payout = 0;
-
-        if (betType === 'color' && betValue === winningColor) { didWin = true; payout = bet.amount * 2; }
-        else if (betType === 'number' && Number(betValue) === winningNumber) { didWin = true; payout = bet.amount * 9; }
-        else if (betType === 'size' && betValue === winningSize) { didWin = true; payout = bet.amount * 1.5; }
-
-        if (didWin) {
-          batch.update(betDocRef, { status: 'win', won: true, payout });
-          userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
-        } else {
-          batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
-        }
-      });
-      
-      batch.set(doc(firestore, 'game_rounds', currentRoundId), resultData);
-      await batch.commit();
-
-      if (Object.keys(userPayouts).length > 0) {
-        const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
-          const userToUpdateRef = doc(firestore, 'users', uid);
-          try {
-            const userDoc = await getDoc(userToUpdateRef);
-            if (userDoc.exists()) {
-              const currentBalance = userDoc.data().balance || 0;
-              await updateDoc(userToUpdateRef, { balance: currentBalance + userPayouts[uid] });
-              if(user && uid === user.uid) toast({ title: "You Won!", description: `INR ${userPayouts[uid].toFixed(2)} added to your wallet.` });
+        // --- Winning Logic ---
+        const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
+        activeBets.forEach(bet => {
+            if (bet.choice.startsWith('color:')) {
+                const color = bet.choice.split(':')[1];
+                if (color in colorTotals) colorTotals[color] += bet.amount * 2; // Potential payout for color
             }
-          } catch (e) { console.error(`Failed to update balance for user ${uid}:`, e); }
         });
-        await Promise.allSettled(userUpdatePromises);
-      }
-    } catch(error) { 
-        console.error("Error in handleRoundEnd: ", error); 
+
+        let winningColor: 'green' | 'orange' | 'white';
+        if (activeBets.length > 0) {
+            const minPayout = Math.min(...Object.values(colorTotals));
+            const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minPayout);
+            winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
+        } else {
+            const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
+            winningColor = colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        const winningNumber = Math.floor(Math.random() * 10);
+        const winningSize = winningNumber >= 5 ? 'big' : 'small';
+
+        // --- Store Result and Update UI ---
+        const resultData: GameResult = {
+            id: currentRoundId,
+            gameId: currentRoundId,
+            resultNumber,
+            resultColor: winningColor,
+            resultSize: winningSize,
+            startTime: new Date().toISOString(),
+            status: 'finished'
+        };
+        
+        const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
+        await setDoc(roundDocRef, resultData); // Save the result first!
+        setGameResult(resultData); // Update state to show result on UI
+
+        // --- Process Bets ---
+        if (activeBets.length > 0) {
+            const batch = writeBatch(firestore);
+            const userPayouts: { [userId: string]: number } = {};
+
+            activeBets.forEach(bet => {
+                const betDocRef = doc(firestore, 'bets', bet.id);
+                const [betType, betValue] = bet.choice.split(':');
+                let didWin = false;
+                let payout = 0;
+
+                if (betType === 'color' && betValue === winningColor) { didWin = true; payout = bet.amount * 2; }
+                if (betType === 'number' && Number(betValue) === winningNumber) { didWin = true; payout = bet.amount * 9; }
+                if (betType === 'size' && betValue === winningSize) { didWin = true; payout = bet.amount * 1.5; }
+
+                if (didWin) {
+                    batch.update(betDocRef, { status: 'win', won: true, payout: payout });
+                    userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
+                } else {
+                    batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
+                }
+            });
+
+            await batch.commit();
+
+            // --- Distribute Payouts ---
+            if (Object.keys(userPayouts).length > 0) {
+                const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
+                    const userToUpdateRef = doc(firestore, 'users', uid);
+                    try {
+                        const userDoc = await getDoc(userToUpdateRef);
+                        if (userDoc.exists()) {
+                            const currentBalance = userDoc.data().balance || 0;
+                            await updateDoc(userToUpdateRef, { balance: currentBalance + userPayouts[uid] });
+                            if (user && uid === user.uid) {
+                                toast({ title: "You Won!", description: `INR ${userPayouts[uid].toFixed(2)} added to your wallet.` });
+                            }
+                        }
+                    } catch (e) { console.error(`Failed to update balance for user ${uid}:`, e); }
+                });
+                await Promise.allSettled(userUpdatePromises);
+            }
+        }
+    } catch (error) {
+        console.error("Error in handleRoundEnd: ", error);
         toast({ variant: "destructive", title: "Round Error", description: "Could not process round results." });
     } finally {
         setIsProcessing(false);

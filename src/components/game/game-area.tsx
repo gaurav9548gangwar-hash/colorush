@@ -49,13 +49,18 @@ export default function GameArea() {
   const [betAmount, setBetAmount] = useState(10);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
-  const [currentRoundId, setCurrentRoundId] = useState<string>(`round_${new Date().getTime()}`);
+  const [currentRoundId, setCurrentRoundId] = useState<string>('');
   
   const [pastResults, setPastResults] = useState<GameResult[]>([]);
   const [userBets, setUserBets] = useState<Bet[]>([]);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
+  
+  useEffect(() => {
+    // Generate the initial round ID only on the client side
+    setCurrentRoundId(`round_${new Date().getTime()}`);
+  }, []);
 
   const userRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -272,6 +277,9 @@ export default function GameArea() {
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
 
+  if (!currentRoundId) {
+    return null; // Or a loading indicator
+  }
 
   return (
     <section className="space-y-4 relative">
@@ -446,3 +454,5 @@ export default function GameArea() {
     </section>
   );
 }
+
+    

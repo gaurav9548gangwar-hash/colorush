@@ -36,6 +36,16 @@ export default function MyBetsTab() {
       }
   }
 
+  const renderResult = (bet: Bet) => {
+    if (bet.status === 'active') {
+      return <span className="text-muted-foreground">Waiting...</span>;
+    }
+    if (bet.won) {
+      return <span className="text-green-500 font-semibold">+₹{bet.payout.toFixed(2)}</span>;
+    }
+    return <span className="text-red-500 font-semibold">-₹{bet.amount.toFixed(2)}</span>;
+  }
+
   return (
     <div className="space-y-2">
          <div className="flex justify-between items-center">
@@ -51,7 +61,8 @@ export default function MyBetsTab() {
                         <TableHead>Period</TableHead>
                         <TableHead>Select</TableHead>
                         <TableHead>Amount</TableHead>
-                        <TableHead className="text-right">Result</TableHead>
+                        <TableHead>Result</TableHead>
+                        <TableHead className="text-right">Profit/Loss</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -59,11 +70,14 @@ export default function MyBetsTab() {
                         <TableRow key={bet.id}>
                             <TableCell>{bet.roundId.slice(-6)}</TableCell>
                             <TableCell>
-                                <Badge variant={getStatusVariant(bet.status)}>{bet.choice}</Badge>
+                                <Badge variant="secondary" className="capitalize">{bet.choice.replace(':',': ')}</Badge>
                             </TableCell>
                             <TableCell>₹{bet.amount.toFixed(2)}</TableCell>
-                            <TableCell className={cn("text-right font-semibold", bet.won ? 'text-green-500' : 'text-red-500')}>
-                                {bet.status === 'active' ? 'Waiting...' : `${bet.won ? '+' : '-'}₹${bet.status === 'win' ? bet.payout.toFixed(2) : bet.amount.toFixed(2)}`}
+                            <TableCell>
+                               <Badge variant={getStatusVariant(bet.status)}>{bet.status}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                                {renderResult(bet)}
                             </TableCell>
                         </TableRow>
                     ))}

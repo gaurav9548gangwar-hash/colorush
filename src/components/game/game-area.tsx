@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { Badge } from "../ui/badge";
 
 type BetSelection = {
   type: 'color' | 'number' | 'size' | null;
@@ -203,6 +204,12 @@ export default function GameArea() {
     if ([0,5].includes(num)) return 'bg-white text-purple-700 border-2 border-purple-500';
     return 'bg-gray-500';
   }
+  
+  const colorToVariant = (color: string): "green" | "white" | "orange" => {
+    if (color === 'green') return 'green';
+    if (color === 'white') return 'white';
+    return 'orange';
+  }
 
   if (!currentRoundId) return <div className="text-center p-4">Initializing Game...</div>;
 
@@ -227,12 +234,25 @@ export default function GameArea() {
                     <span>Calculating result...</span>
                 </div>
             ) : gameResult ? (
-                 <div className="flex flex-col items-center gap-2">
-                    <p className="text-lg font-bold">Winner: {gameResult.resultNumber}</p>
-                    <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-lg font-bold", numberToColorClass(gameResult.resultNumber))}>
-                        {gameResult.resultNumber}
+                 <div className="flex flex-col items-center gap-3">
+                    <p className="font-bold">Result for {gameResult.gameId.slice(-6)}</p>
+                    <div className="grid grid-cols-3 gap-2 w-full max-w-xs text-center">
+                      <div className="p-2 bg-background/50 rounded">
+                        <p className="text-xs text-muted-foreground">Number</p>
+                        <p className={cn("text-xl font-bold", numberToColorClass(gameResult.resultNumber).replace('bg-', 'text-'))}>{gameResult.resultNumber}</p>
+                      </div>
+                       <div className="p-2 bg-background/50 rounded">
+                        <p className="text-xs text-muted-foreground">Size</p>
+                        <p className="text-xl font-bold capitalize">{gameResult.resultSize}</p>
+                      </div>
+                       <div className="p-2 bg-background/50 rounded">
+                        <p className="text-xs text-muted-foreground">Color</p>
+                        <div className="flex justify-center items-center gap-1.5">
+                            <div className={cn("w-4 h-4 rounded-full", numberToColorClass(gameResult.resultNumber))}></div>
+                            <p className="text-xl font-bold capitalize">{gameResult.resultColor}</p>
+                        </div>
+                      </div>
                     </div>
-                    <p className="capitalize">({gameResult.resultColor}, {gameResult.resultSize})</p>
                 </div>
             ) : (
                 <p>Waiting for the next round...</p>

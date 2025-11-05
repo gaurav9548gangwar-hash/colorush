@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -15,48 +14,34 @@ import { Badge } from "../ui/badge";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
 } from "../ui/card";
-import { Label } from "../ui/label";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
-import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
 import { collection, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, Timestamp, addDoc, onSnapshot, Unsubscribe } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { FirestorePermissionError } from "@/firebase/errors";
-import { errorEmitter } from "@/firebase/error-emitter";
+import { List } from "lucide-react";
 
 type BetSelection = {
-  type: 'color' | 'number' | null;
+  type: 'color' | 'number' | 'size' | null;
   value: string | number | null;
 };
-
-type PlacedBetInfo = {
-    id: string;
-    userId: string;
-    amount: number;
-    choice: string;
-}
 
 export default function GameArea() {
   const [selection, setSelection] = useState<BetSelection>({ type: null, value: null });
   const [betAmount, setBetAmount] = useState(10);
+  const [multiplier, setMultiplier] = useState(1);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
   
   const [pastResults, setPastResults] = useState<GameResult[]>([]);
-  const [userBets, setUserBets] = useState<Bet[]>([]);
+  const [myBets, setMyBets] = useState<Bet[]>([]);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
-  
+
   useEffect(() => {
     // Generate the initial round ID only on the client side to avoid hydration errors
     setCurrentRoundId(`round_${new Date().getTime()}`);
@@ -68,48 +53,48 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
-  // Effect for fetching past game results in real-time (last 20)
+  // Real-time listener for past game results (last 10)
   useEffect(() => {
     if (!firestore) return;
-    const q = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(20));
+    const q = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const results = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as GameResult));
       setPastResults(results);
-    }, (error) => {
-        console.error("Error fetching past results:", error);
     });
     return () => unsubscribe();
   }, [firestore]);
-  
-  // Effect for fetching the current user's bets in real-time
+
+  // Real-time listener for the current user's bets
   useEffect(() => {
     if (!firestore || !user) {
-        setUserBets([]);
+        setMyBets([]);
         return;
     };
     
-    // Query for user's bets, ordered by creation time
     const q = query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const bets = snapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
-        setUserBets(bets);
-    }, (error) => {
-        console.error("Failed to fetch user bets in real-time:", error);
+        setMyBets(bets);
     });
 
     return () => unsubscribe();
   }, [firestore, user]);
 
-
-  const handleSelection = (type: 'color' | 'number', value: string | number) => {
+  const handleSelection = (type: 'color' | 'number' | 'size', value: string | number) => {
     if (isBettingLocked) return;
     setSelection({ type, value });
   };
+  
+  const handleMultiplier = (m: number) => {
+    if (isBettingLocked) return;
+    setMultiplier(m);
+  }
 
-  const isBetReady = selection.type !== null && betAmount > 0;
+  const isBetReady = selection.type !== null && (betAmount * multiplier) > 0;
 
   const handlePlaceBet = async () => {
+    const totalBetAmount = betAmount * multiplier;
     if (!user || !firestore || !userData || !currentRoundId) {
       toast({ variant: "destructive", title: "Please log in to place a bet." });
       return;
@@ -119,45 +104,39 @@ export default function GameArea() {
       return;
     }
     if (!selection.type || selection.value === null) {
-       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color or number." });
+       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color, number or size." });
        return;
     }
-    if (userData.balance < betAmount) {
-        toast({ variant: "destructive", title: "Insufficient Balance", description: "You don't have enough money to place this bet." });
+    if (userData.balance < totalBetAmount) {
+        toast({ variant: "destructive", title: "Insufficient Balance", description: `You need INR ${totalBetAmount.toFixed(2)} to place this bet.` });
         return;
     }
 
     try {
-      // Optimistically deduct balance from user's wallet
-      const newBalance = userData.balance - betAmount;
-      if (userRef) {
-        updateDoc(userRef, { balance: newBalance });
-      }
+      const newBalance = userData.balance - totalBetAmount;
+      updateDoc(userRef, { balance: newBalance });
       
-      const newBetRef = collection(firestore, `bets`);
       const betChoice = `${selection.type}:${selection.value}`;
 
       const betData: Omit<Bet, 'id'> = {
         userId: user.uid,
         roundId: currentRoundId,
         choice: betChoice,
-        amount: betAmount,
+        amount: totalBetAmount,
         status: 'active',
-        createdAt: Timestamp.now(), // Use Firestore Timestamp for proper ordering
+        createdAt: Timestamp.now(),
         payout: 0,
         won: false,
       };
 
-      // Add the new bet to the 'bets' collection
-      await addDoc(newBetRef, betData);
+      await addDoc(collection(firestore, 'bets'), betData);
 
-      toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
+      toast({ title: "Bet Placed!", description: `INR ${totalBetAmount.toFixed(2)} on ${betChoice}.` });
       setSelection({ type: null, value: null });
       
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      // If bet placement fails, revert the balance optimistically
       if (userRef && userData) {
         updateDoc(userRef, { balance: userData.balance });
       }
@@ -166,313 +145,170 @@ export default function GameArea() {
   
   const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
-
     setIsBettingLocked(true);
 
     try {
-        // Query for all active bets placed in the current round
-        const allBetsInRoundQuery = query(
-            collection(firestore, 'bets'),
-            where('roundId', '==', currentRoundId),
-            where('status', '==', 'active')
-        );
-        const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
-        const activeBetsData: PlacedBetInfo[] = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlacedBetInfo));
-        
-        // Smart logic to determine winning color (the one with the minimum total bet amount)
-        const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
-        activeBetsData.forEach(bet => {
-            if (bet.choice.startsWith('color:')) {
-                const color = bet.choice.split(':')[1];
-                if (color in colorTotals) {
-                    colorTotals[color] += bet.amount * 2; // Potential payout
-                }
-            }
-        });
-        
-        let winningColor: 'green' | 'orange' | 'white';
-        // If no bets are placed, pick a random color
-        if (activeBetsData.length === 0) {
-            const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
-            winningColor = colors[Math.floor(Math.random() * colors.length)];
+      const allBetsInRoundQuery = query(collection(firestore, 'bets'), where('roundId', '==', currentRoundId), where('status', '==', 'active'));
+      const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
+      const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
+
+      // Smart logic to determine winning color (minimum potential payout)
+      const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
+      activeBets.forEach(bet => {
+        if (bet.choice.startsWith('color:')) {
+          const color = bet.choice.split(':')[1];
+          if (color in colorTotals) colorTotals[color] += bet.amount * 2;
+        }
+      });
+      let winningColor: 'green' | 'orange' | 'white' = 'green';
+      if (activeBets.length > 0) {
+        const minBet = Math.min(...Object.values(colorTotals));
+        const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minBet);
+        winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
+      } else {
+         const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
+         winningColor = colors[Math.floor(Math.random() * colors.length)];
+      }
+
+      const winningNumber = Math.floor(Math.random() * 10);
+      const winningSize = winningNumber >= 5 ? 'big' : 'small';
+      
+      const resultData: GameResult = { id: currentRoundId, gameId: currentRoundId, resultNumber, resultColor: winningColor, resultSize: winningSize, startTime: new Date().toISOString(), status: 'finished' };
+      setGameResult(resultData);
+
+      const batch = writeBatch(firestore);
+      const userPayouts: { [userId: string]: number } = {};
+
+      activeBets.forEach(bet => {
+        const betDocRef = doc(firestore, 'bets', bet.id);
+        const [betType, betValue] = bet.choice.split(':');
+        let didWin = false; let payout = 0;
+
+        if (betType === 'color' && betValue === winningColor) { didWin = true; payout = bet.amount * 2; }
+        else if (betType === 'number' && Number(betValue) === winningNumber) { didWin = true; payout = bet.amount * 9; }
+        else if (betType === 'size' && betValue === winningSize) { didWin = true; payout = bet.amount * 1.5; }
+
+        if (didWin) {
+          batch.update(betDocRef, { status: 'win', won: true, payout });
+          userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
         } else {
-            // Find the color with the minimum potential payout
-            const minBet = Math.min(...Object.values(colorTotals));
-            const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(
-                color => colorTotals[color] === minBet
-            );
-            // If there's a tie, pick randomly among the tied colors
-            winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
+          batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
         }
-        
-        const winningNumber = Math.floor(Math.random() * 10);
-        
-        const resultData: GameResult = {
-            id: currentRoundId,
-            gameId: currentRoundId,
-            resultNumber: winningNumber,
-            resultColor: winningColor,
-            startTime: new Date().toISOString(),
-            status: 'finished'
-        };
-        setGameResult(resultData);
+      });
+      
+      batch.set(doc(firestore, 'game_rounds', currentRoundId), resultData);
+      await batch.commit();
 
-        const batch = writeBatch(firestore);
-        const userPayouts: { [userId: string]: number } = {};
-
-        // Calculate winnings for each bet
-        for (const bet of activeBetsData) {
-            const betDocRef = doc(firestore, 'bets', bet.id);
-            const [betType, betValue] = bet.choice.split(':');
-            let didWin = false;
-            let payout = 0;
-
-            if (betType === 'color' && betValue === winningColor) {
-                didWin = true;
-                payout = bet.amount * 2;
-            } else if (betType === 'number' && Number(betValue) === winningNumber) {
-                didWin = true;
-                payout = bet.amount * 9;
+      // Update user balances after batch commit
+      if (Object.keys(userPayouts).length > 0) {
+        const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
+          const userToUpdateRef = doc(firestore, 'users', uid);
+          try {
+            const userDoc = await getDoc(userToUpdateRef);
+            if (userDoc.exists()) {
+              const currentBalance = userDoc.data().balance || 0;
+              await updateDoc(userToUpdateRef, { balance: currentBalance + userPayouts[uid] });
+              if(user && uid === user.uid) toast({ title: "You Won!", description: `INR ${userPayouts[uid].toFixed(2)} added to your wallet.` });
             }
-
-            if (didWin) {
-                batch.update(betDocRef, { status: 'win', won: true, payout: payout });
-                // Aggregate payouts per user
-                userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
-            } else {
-                batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
-            }
-        }
-        
-        // Save the game round result
-        const gameRoundRef = doc(firestore, 'game_rounds', currentRoundId);
-        batch.set(gameRoundRef, resultData);
-
-        // Commit all bet updates and the game result in one atomic operation
-        await batch.commit();
-
-        // After the batch is committed, update user balances for winners
-        if (Object.keys(userPayouts).length > 0) {
-            const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
-                const userToUpdateRef = doc(firestore, 'users', uid);
-                const payoutAmount = userPayouts[uid];
-                try {
-                    // Fetch the user document to get the current balance
-                    const userDoc = await getDoc(userToUpdateRef);
-                    if (userDoc.exists()) {
-                        const currentBalance = userDoc.data().balance || 0;
-                        await updateDoc(userToUpdateRef, { balance: currentBalance + payoutAmount });
-
-                        // Show toast only to the current user if they won
-                        if(user && uid === user.uid && payoutAmount > 0) {
-                            toast({ title: "You Won!", description: `INR ${payoutAmount.toFixed(2)} has been added to your wallet.` });
-                        }
-                    }
-                } catch (e) {
-                    console.error(`Failed to update balance for user ${uid}:`, e);
-                    // Handle failure for a single user update if necessary
-                }
-            });
-            // Use Promise.allSettled to ensure all updates are attempted, even if some fail
-            await Promise.allSettled(userUpdatePromises);
-        }
-
-    } catch(serverError: any) {
-        console.error("Error in handleRoundEnd: ", serverError);
-        // Create and emit a contextual error for permission issues
-        const permissionError = new FirestorePermissionError({
-            path: 'bets/game_rounds',
-            operation: 'write',
-            requestResourceData: { roundId: currentRoundId, message: "Failed during result calculation." }
+          } catch (e) { console.error(`Failed to update balance for user ${uid}:`, e); }
         });
-        errorEmitter.emit('permission-error', permissionError);
-    }
+        await Promise.allSettled(userUpdatePromises);
+      }
+    } catch(error) { console.error("Error in handleRoundEnd: ", error); }
   }, [firestore, currentRoundId, user, toast]);
   
-  // Resets the game state for a new round
   const handleNewRound = useCallback(() => {
     setGameResult(null);
     setIsBettingLocked(false);
     setSelection({ type: null, value: null });
-    // Generate a new unique ID for the new round
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
-
-  // Render a loading state or null if the round ID isn't set yet
-  if (!currentRoundId) {
-    return null; // Or a loading indicator
+  
+  const numberToColor = (num: number) => {
+    if ([1,3,7,9].includes(num)) return 'bg-green-500';
+    if ([2,4,6,8].includes(num)) return 'bg-orange-500';
+    if ([0,5].includes(num)) return 'bg-white text-purple-700 border-2 border-purple-500';
+    return 'bg-gray-500';
   }
+
+  if (!currentRoundId) return <div className="text-center p-4">Initializing Game...</div>;
 
   return (
     <section className="space-y-4 relative">
-        <div className="flex items-center justify-between p-4 rounded-lg bg-background/30">
-            <div>
-            <p className="text-sm text-gray-400">Win Go 1 Min</p>
-            <p className="text-lg font-bold">{currentRoundId}</p>
+      <Card className="bg-primary/20">
+        <CardContent className="p-2">
+            <div className="flex justify-between items-center">
+                <Button variant="ghost" size="sm" className="text-xs"><List className="mr-1 h-3 w-3" /> How to play</Button>
+                <div className="text-right">
+                    <p className="text-xs text-gray-400">Time remaining</p>
+                    <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} roundId={currentRoundId} />
+                </div>
             </div>
-            <div className="text-right">
-            <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} roundId={currentRoundId} />
+            <div className="flex items-center justify-between mt-2 px-2">
+                <p className="text-sm">Win Go 1Min</p>
+                <p className="text-sm font-mono">{currentRoundId}</p>
             </div>
-        </div>
+            <div className="flex space-x-2 p-2 overflow-x-auto">
+                {pastResults.slice(0, 5).map(r => (
+                    <div key={r.id} className={cn("flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center font-bold text-white", numberToColor(r.resultNumber))}>
+                        {r.resultNumber}
+                    </div>
+                ))}
+            </div>
+        </CardContent>
+      </Card>
       
-      {gameResult && (
-        <Card className="bg-primary/20 border-primary">
-            <CardHeader className="text-center pb-2">
-                <CardTitle>Result for {gameResult.id}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center gap-4">
-                <p className="text-4xl font-bold">{gameResult.resultNumber}</p>
-                <Badge className="text-2xl px-4 py-1" style={{ backgroundColor: gameResult.resultColor === 'white' ? 'white' : gameResult.resultColor, color: gameResult.resultColor === 'white' ? '#581c87' : '#fff' }}>
-                    {gameResult.resultColor}
-                </Badge>
-            </CardContent>
-        </Card>
-      )}
 
       <Card className="bg-background/30 border-primary/50">
-        <CardHeader>
-          <CardTitle>Place Your Bet</CardTitle>
-          <CardDescription>Select a color OR a number, and an amount.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label className="text-base">1. Choose Color (2x Payout)</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant={selection.type === 'color' && selection.value === 'green' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl bg-green-500 hover:bg-green-600 text-white", selection.type === 'color' && selection.value === 'green' && 'ring-2 ring-offset-2 ring-primary')}
-                onClick={() => handleSelection('color', 'green')}
-                disabled={isBettingLocked}
-              >
-                Green
-              </Button>
-              <Button
-                variant={selection.type === 'color' && selection.value === 'white' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl bg-gray-200 text-black hover:bg-gray-300", selection.type === 'color' && selection.value === 'white' && 'ring-2 ring-offset-2 ring-primary')}
-                onClick={() => handleSelection('color', 'white')}
-                disabled={isBettingLocked}
-              >
-                White
-              </Button>
-              <Button
-                variant={selection.type === 'color' && selection.value === 'orange' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl bg-orange-500 hover:bg-orange-600 text-white", selection.type === 'color' && selection.value === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
-                onClick={() => handleSelection('color', 'orange')}
-                disabled={isBettingLocked}
-              >
-                Orange
-              </Button>
-            </div>
+        <CardContent className="p-2 space-y-4">
+          <div className="grid grid-cols-3 gap-2">
+            <Button
+              variant={selection.type === 'color' && selection.value === 'green' ? 'default' : 'green'}
+              onClick={() => handleSelection('color', 'green')} disabled={isBettingLocked} >
+              Green
+            </Button>
+            <Button
+              variant={selection.type === 'color' && selection.value === 'white' ? 'default' : 'white'}
+              onClick={() => handleSelection('color', 'white')} disabled={isBettingLocked}>
+              White
+            </Button>
+            <Button
+              variant={selection.type === 'color' && selection.value === 'orange' ? 'default' : 'orange'}
+              onClick={() => handleSelection('color', 'orange')} disabled={isBettingLocked}>
+              Orange
+            </Button>
           </div>
           
-          <div className="space-y-2">
-            <Label className="text-base">OR Choose Number (9x Payout)</Label>
-            <div className="grid grid-cols-5 gap-2">
-              {Array.from({ length: 10 }, (_, i) => i).map(num => (
-                <Button 
-                    key={num}
-                    variant={selection.type === 'number' && selection.value === num ? 'default' : 'secondary'}
-                    className={cn("h-12 text-lg", selection.type === 'number' && selection.value === num && 'ring-2 ring-offset-2 ring-primary')}
-                    onClick={() => handleSelection('number', num)}
-                    disabled={isBettingLocked}
-                >
-                    {num}
-                </Button>
-              ))}
-            </div>
+          <div className="grid grid-cols-5 gap-2">
+            {Array.from({ length: 10 }, (_, i) => i).map(num => (
+              <Button 
+                  key={num}
+                  variant='secondary'
+                  size="circle"
+                  className={cn("h-12 w-12 text-lg", numberToColor(num), selection.type === 'number' && selection.value === num && 'ring-2 ring-offset-2 ring-primary')}
+                  onClick={() => handleSelection('number', num)}
+                  disabled={isBettingLocked}>
+                  {num}
+              </Button>
+            ))}
           </div>
-
-          <div className="space-y-2">
-              <Label className="text-base">2. Choose Amount</Label>
-               <RadioGroup
-                defaultValue="10"
-                className="grid grid-cols-5 gap-2"
-                onValueChange={(value) => setBetAmount(Number(value))}
-                value={String(betAmount)}
-                disabled={isBettingLocked}
-              >
-                {[10, 50, 100, 500, 1000].map((val) => (
-                  <div key={val} className="flex items-center space-x-2">
-                    <RadioGroupItem value={String(val)} id={`r${val}`} />
-                    <Label htmlFor={`r${val}`}>{val}</Label>
-                  </div>
-                ))}
-              </RadioGroup>
-              <Input 
-                type="number" 
-                value={betAmount} 
-                onChange={(e) => setBetAmount(Number(e.target.value))} 
-                placeholder="Or enter custom amount"
-                className="mt-2 bg-input"
-                disabled={isBettingLocked}
-              />
+          
+          <div className="grid grid-cols-5 gap-2">
+             {['Random', 'X1', 'X5', 'X10', 'X20', 'X50', 'X100', 'Big', 'Small'].map((item) => {
+                 if(item.startsWith('X')) {
+                    const m = parseInt(item.substring(1));
+                    return <Button key={item} variant={multiplier === m ? 'default' : 'secondary'} onClick={() => handleMultiplier(m)} disabled={isBettingLocked}>{item}</Button>
+                 }
+                 if(item === 'Big' || item === 'Small') {
+                    return <Button key={item} variant={selection.value === item.toLowerCase() ? 'default' : 'secondary'} className="col-span-2 h-12" onClick={() => handleSelection('size', item.toLowerCase())} disabled={isBettingLocked}>{item}</Button>
+                 }
+                 // Random button
+                 return <Button key={item} variant='secondary' disabled={isBettingLocked}>Random</Button>
+             })}
           </div>
 
         </CardContent>
-        <CardFooter>
-            <Button className="w-full h-14 text-xl" disabled={!isBetReady || isBettingLocked} onClick={handlePlaceBet}>
-                {isBettingLocked ? "Waiting for next round..." : "Place Bet"}
-            </Button>
-        </CardFooter>
       </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-lg bg-background/30 p-4">
-          <h3 className="font-bold mb-2 text-center">My Bets</h3>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Round</TableHead>
-                <TableHead>Choice</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Payout</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {userBets.map((bet) => (
-                <TableRow key={bet.id}>
-                  <TableCell className="text-xs truncate" style={{maxWidth: '80px'}}>{bet.roundId}</TableCell>
-                  <TableCell className="text-xs capitalize">{bet.choice.replace(':', ': ')}</TableCell>
-                  <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={bet.won ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
-                          {bet.status}
-                      </Badge>
-                  </TableCell>
-                  <TableCell className={cn("text-right", bet.won ? "text-green-400" : "")}>
-                      {bet.won ? `+INR ${bet.payout.toFixed(2)}` : 'INR 0.00'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        <div className="rounded-lg bg-background/30 p-4">
-          <h3 className="font-bold mb-2 text-center">Past Results</h3>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Game ID</TableHead>
-                <TableHead className="text-right">Result</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pastResults.map((result) => (
-                <TableRow key={result.id}>
-                  <TableCell className="text-xs truncate" style={{maxWidth: '120px'}}>{result.id}</TableCell>
-                  <TableCell className="text-right">
-                    <Badge className="text-lg" style={{ backgroundColor: result.resultColor === 'white' ? 'white' : result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
-                      {result.resultNumber}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
     </section>
   );
 }

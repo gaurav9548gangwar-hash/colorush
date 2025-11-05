@@ -67,3 +67,7 @@
     @apply bg-background text-foreground;
   }
 }
+
+.countdown-box {
+    @apply bg-gray-200 text-black p-2 rounded-md font-mono text-xl;
+}

@@ -1,4 +1,3 @@
-
 export type User = {
   id: string;
   name: string;
@@ -35,6 +34,7 @@ export type GameResult = {
   gameId: string;
   resultNumber: number;
   resultColor: 'green' | 'orange' | 'white';
+  resultSize: 'big' | 'small';
   startTime?: string;
   status?: string;
 };

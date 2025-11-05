@@ -16,9 +16,9 @@ export default function GameModes() {
           <Button
             key={mode.name}
             variant={index === 0 ? "default" : "secondary"}
-            className="flex flex-col items-center justify-center h-24 rounded-lg"
+            className="flex flex-col items-center justify-center h-20 rounded-lg bg-primary/20 text-white"
           >
-            <Clock className="h-8 w-8 mb-1" />
+            <Clock className="h-6 w-6 mb-1" />
             <span className="text-xs font-semibold">{mode.name}</span>
           </Button>
         ))}

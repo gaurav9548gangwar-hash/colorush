@@ -24,8 +24,8 @@ service cloud.firestore {
     }
 
     match /deposits/{depositId} {
-      // Admin can list documents where status is 'pending'. The app now queries just by this field.
-      allow list: if isAdmin() && request.query.where.length == 1 && request.query.where[0].fieldPath == 'status' && request.query.where[0].op == '==' && request.query.where[0].value == 'pending';
+      // Admin can list documents where status is 'pending'.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
       
       // An admin or the owner can get a specific deposit request.
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
@@ -41,8 +41,8 @@ service cloud.firestore {
     }
 
      match /withdrawals/{withdrawalId} {
-      // Admin can list documents where status is 'pending'. The app now queries just by this field.
-      allow list: if isAdmin() && request.query.where.length == 1 && request.query.where[0].fieldPath == 'status' && request.query.where[0].op == '==' && request.query.where[0].value == 'pending';
+      // Admin can list documents where status is 'pending'.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
       
       // An admin or the owner can get a specific withdrawal request.
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);

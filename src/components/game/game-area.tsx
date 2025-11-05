@@ -31,7 +31,7 @@ export function GameArea() {
   const [isBettingLocked, setIsBettingLocked] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
-  const [currentRoundBets, setCurrentRoundBets] = useState<Omit<Bet, 'id' | 'createdAt'>[]>([]);
+  const [currentRoundBets, setCurrentRoundBets] = useState<Omit<Bet, 'id'>[]>([]);
   
   const handleNewRound = useCallback(() => {
     setIsProcessing(false)
@@ -46,7 +46,7 @@ export function GameArea() {
     handleNewRound()
   }, [handleNewRound])
 
-  const onBetPlaced = (bet: Omit<Bet, 'id' | 'createdAt'>) => {
+  const onBetPlaced = (bet: Omit<Bet, 'id'>) => {
     setCurrentRoundBets(prevBets => [...prevBets, bet]);
   };
 
@@ -57,76 +57,68 @@ export function GameArea() {
     setIsProcessing(true);
 
     let resultData: GameResult;
-    let betsToProcess = [...currentRoundBets]; // Create a copy of the bets for processing
+    let betsToProcess = [...currentRoundBets];
 
-    try {
-        const potentialPayouts: { [key in BetTarget | 'green' | 'orange' | 'white']: number } = {
-            green: 0, orange: 0, white: 0,
-            small: 0, big: 0,
-            0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0
-        };
+    const potentialPayouts: { [key in BetTarget | 'green' | 'orange' | 'white']: number } = {
+        green: 0, orange: 0, white: 0,
+        small: 0, big: 0,
+        0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0
+    };
 
-        betsToProcess.forEach(bet => {
-            let payout = 0;
-            const betNum = typeof bet.target === 'number' ? bet.target : -1;
+    betsToProcess.forEach(bet => {
+        let payout = 0;
+        const betNum = typeof bet.target === 'number' ? bet.target : -1;
 
-            if (bet.type === 'color') {
-                const color = bet.target as BetColor;
-                payout = bet.amount * (color === 'white' ? 4.5 : 2);
-                potentialPayouts[color] += payout;
-            } else if (bet.type === 'number' && betNum !== -1) {
-                payout = bet.amount * 9;
-                potentialPayouts[betNum] += payout;
-            } else if (bet.type === 'size') {
-                payout = bet.amount * 2;
-                potentialPayouts[bet.target as BetSize] += payout;
-            }
-        });
-        
-        const combinedColorPayouts = {
-            green: potentialPayouts.green + potentialPayouts[1] + potentialPayouts[3] + potentialPayouts[7] + potentialPayouts[9],
-            orange: potentialPayouts.orange + potentialPayouts[2] + potentialPayouts[4] + potentialPayouts[6] + potentialPayouts[8],
-            white: potentialPayouts.white + potentialPayouts[0] + potentialPayouts[5]
+        if (bet.type === 'color') {
+            const color = bet.target as BetColor;
+            payout = bet.amount * (color === 'white' ? 4.5 : 2);
+            potentialPayouts[color] += payout;
+        } else if (bet.type === 'number' && betNum !== -1) {
+            payout = bet.amount * 9;
+            potentialPayouts[betNum] += payout;
+        } else if (bet.type === 'size') {
+            payout = bet.amount * 2;
+            potentialPayouts[bet.target as BetSize] += payout;
         }
-
-        let leastPayoutColor: BetColor = 'green';
-        let minPayout = combinedColorPayouts.green;
-
-        if (combinedColorPayouts.orange < minPayout) {
-            minPayout = combinedColorPayouts.orange;
-            leastPayoutColor = 'orange';
-        }
-        if (combinedColorPayouts.white < minPayout) {
-            leastPayoutColor = 'white';
-        }
-
-        const possibleNumbers = {
-            green: [1, 3, 7, 9],
-            orange: [2, 4, 6, 8],
-            white: [0, 5],
-        }[leastPayoutColor];
-        
-        const winningNumber = possibleNumbers[Math.floor(Math.random() * possibleNumbers.length)];
-        const winningColor = getWinningColor(winningNumber);
-        const winningSize = getWinningSize(winningNumber);
-  
-        resultData = {
-            id: currentRoundId,
-            roundId: currentRoundId,
-            winningNumber,
-            winningColor,
-            winningSize,
-            endedAt: new Date(),
-        };
-        
-        setGameResult(resultData);
-
-    } catch (error) {
-        console.error("Error calculating result: ", error);
-        toast({ variant: "destructive", title: "Result Error", description: "Could not calculate round results." });
-        setIsProcessing(false);
-        return; 
+    });
+    
+    const combinedColorPayouts = {
+        green: potentialPayouts.green + potentialPayouts[1] + potentialPayouts[3] + potentialPayouts[7] + potentialPayouts[9],
+        orange: potentialPayouts.orange + potentialPayouts[2] + potentialPayouts[4] + potentialPayouts[6] + potentialPayouts[8],
+        white: potentialPayouts.white + potentialPayouts[0] + potentialPayouts[5]
     }
+
+    let leastPayoutColor: BetColor = 'green';
+    let minPayout = combinedColorPayouts.green;
+
+    if (combinedColorPayouts.orange < minPayout) {
+        minPayout = combinedColorPayouts.orange;
+        leastPayoutColor = 'orange';
+    }
+    if (combinedColorPayouts.white < minPayout) {
+        leastPayoutColor = 'white';
+    }
+
+    const possibleNumbers = {
+        green: [1, 3, 7, 9],
+        orange: [2, 4, 6, 8],
+        white: [0, 5],
+    }[leastPayoutColor];
+    
+    const winningNumber = possibleNumbers[Math.floor(Math.random() * possibleNumbers.length)];
+    const winningColor = getWinningColor(winningNumber);
+    const winningSize = getWinningSize(winningNumber);
+
+    resultData = {
+        id: currentRoundId,
+        roundId: currentRoundId,
+        winningNumber,
+        winningColor,
+        winningSize,
+        endedAt: new Date(),
+    };
+    
+    setGameResult(resultData);
 
     try {
         const batch = writeBatch(firestore);
@@ -173,6 +165,7 @@ export function GameArea() {
             if (userPayouts[userId] > 0) {
                  const userRef = doc(firestore, "users", userId);
                  try {
+                     // Atomically increment the user's balance
                      await updateDoc(userRef, {
                          balance: increment(userPayouts[userId])
                      });

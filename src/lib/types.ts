@@ -22,7 +22,7 @@ export interface Bet {
   type: "color" | "number" | "size";
   status: "pending" | "win" | "loss";
   payout: number;
-  createdAt: any; // Allow JS Date and Firebase Timestamp
+  createdAt?: any;
 }
 
 export interface GameResult {

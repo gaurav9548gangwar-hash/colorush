@@ -15,21 +15,24 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useFirebase } from '@/firebase'
 import { useToast } from '@/hooks/use-toast'
-import type { Bet, BetColor, BetSize, BetTarget } from '@/lib/types'
+import type { Bet, BetColor, BetTarget } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { doc, increment, updateDoc } from 'firebase/firestore'
+import { FirestorePermissionError } from '@/firebase/errors'
+import { errorEmitter } from '@/firebase/error-emitter'
 
 interface PlaceBetDialogProps {
   type: 'color' | 'number' | 'size'
   target: BetTarget
   roundId: string
   disabled: boolean
-  onBetPlaced: (bet: Omit<Bet, 'id' | 'createdAt'>) => void
+  onBetPlaced: (bet: Omit<Bet, 'id'>) => void
 }
 
 const amountPresets = [10, 20, 50, 100]
 
 export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }: PlaceBetDialogProps) {
-  const { user } = useFirebase()
+  const { firestore, user } = useFirebase()
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState(10)
@@ -45,29 +48,44 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
     return 'secondary'
   }
 
-  const handlePlaceBet = () => {
-    if (!user || !roundId || amount <= 0) {
+  const handlePlaceBet = async () => {
+    if (!user || !roundId || amount <= 0 || !firestore) {
       toast({ variant: 'destructive', title: 'Invalid Bet', description: 'Please log in and enter a valid amount.' })
       return
     }
     setIsSubmitting(true)
     
-    const betData = {
-      userId: user.uid,
-      roundId,
-      amount,
-      target,
-      type,
-      status: 'pending',
-      payout: 0,
-    } as Omit<Bet, 'id' | 'createdAt'>
+    const userRef = doc(firestore, 'users', user.uid);
 
     try {
+      // Step 1: Deduct balance
+      await updateDoc(userRef, {
+        balance: increment(-amount)
+      });
+
+      // Step 2: If deduction is successful, place the bet locally
+      const betData = {
+        userId: user.uid,
+        roundId,
+        amount,
+        target,
+        type,
+        status: 'pending',
+        payout: 0,
+      } as Omit<Bet, 'id'>
+
       onBetPlaced(betData);
       toast({ title: 'Bet Placed!', description: `You bet ₹${amount} on ${target}. Good luck!` })
       setOpen(false)
+
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Error Placing Bet', description: 'Could not place bet locally.' })
+        const contextualError = new FirestorePermissionError({
+            path: userRef.path,
+            operation: 'update',
+            requestResourceData: { balance: `increment(${-amount})` },
+        });
+        errorEmitter.emit('permission-error', contextualError);
+        toast({ variant: 'destructive', title: 'Error Placing Bet', description: 'Could not update your balance. Please check permissions.' })
     } finally {
       setIsSubmitting(false)
     }

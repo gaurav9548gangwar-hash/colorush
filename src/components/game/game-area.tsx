@@ -385,67 +385,68 @@ export default function GameArea() {
         </CardFooter>
       </Card>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* My Bets History */}
+        <div className="rounded-lg bg-background/30 p-4">
+          <h3 className="font-bold mb-2 text-center">My Bets</h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Round ID</TableHead>
+                <TableHead>Choice</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Payout</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {userBets?.map((bet) => (
+                <TableRow key={bet.id}>
+                  <TableCell className="text-xs">{bet.roundId}</TableCell>
+                  <TableCell className="text-xs">{bet.choice}</TableCell>
+                  <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Badge variant={bet.status === 'win' ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
+                          {bet.status}
+                      </Badge>
+                  </TableCell>
+                  <TableCell className="text-right text-green-400">
+                      {bet.status === 'win' ? `+INR ${bet.payout.toFixed(2)}` : 'INR 0.00'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
 
-      {/* My Bets History */}
-      <div className="rounded-lg bg-background/30 p-4">
-        <h3 className="font-bold mb-2">My Bets</h3>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Round ID</TableHead>
-              <TableHead>Choice</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Payout</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {userBets?.map((bet) => (
-              <TableRow key={bet.id}>
-                <TableCell className="text-xs">{bet.roundId}</TableCell>
-                <TableCell className="text-xs">{bet.choice}</TableCell>
-                <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
-                <TableCell>
-                   <Badge variant={bet.status === 'win' ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
-                        {bet.status}
+
+        {/* Past Results */}
+        <div className="rounded-lg bg-background/30 p-4">
+          <h3 className="font-bold mb-2 text-center">Past Results</h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Game ID</TableHead>
+                <TableHead className="text-right">Result</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pastResults?.map((result) => (
+                <TableRow key={result.id}>
+                  <TableCell className="text-xs">{result.id}</TableCell>
+                  <TableCell className="text-right">
+                    <Badge className="text-lg" style={{ backgroundColor: result.resultColor === 'white' ? 'white' : result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
+                      {result.resultNumber}
                     </Badge>
-                </TableCell>
-                <TableCell className="text-right text-green-400">
-                    {bet.status === 'win' ? `+INR ${bet.payout.toFixed(2)}` : 'INR 0.00'}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
-
-
-      {/* Past Results */}
-      <div className="rounded-lg bg-background/30 p-4">
-        <h3 className="font-bold mb-2">Past Results</h3>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Game ID</TableHead>
-              <TableHead className="text-right">Result</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pastResults?.map((result) => (
-              <TableRow key={result.id}>
-                <TableCell className="text-xs">{result.id}</TableCell>
-                <TableCell className="text-right">
-                   <Badge className="text-lg" style={{ backgroundColor: result.resultColor === 'white' ? 'white' : result.resultColor, color: result.resultColor === 'white' ? '#581c87' : '#fff' }}>
-                    {result.resultNumber}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
     </section>
   );
     
+
 

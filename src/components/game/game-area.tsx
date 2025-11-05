@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Button } from "../ui/button";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { collection, doc, updateDoc, query, where, getDocs, writeBatch, getDoc, addDoc, Timestamp } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, query, where, getDocs, writeBatch, getDoc, addDoc, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -155,7 +155,7 @@ export default function GameArea() {
         };
         
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
-        await setDoc(roundDocRef, resultData); // Save the result first!
+        await setDoc(roundDocRef, resultData); // CRITICAL FIX: Added await here
         setGameResult(resultData); // Update state to show result on UI
 
         // --- Process Bets ---

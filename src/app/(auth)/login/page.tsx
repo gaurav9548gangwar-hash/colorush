@@ -25,7 +25,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-        router.push("/");
+        router.push("/dashboard");
     }
   }, [user, router]);
 
@@ -60,7 +60,7 @@ export default function LoginPage() {
       setIsRegistered(true);
 
       toast({ title: "Registration Successful" })
-      router.push("/")
+      router.push("/dashboard")
     } catch (error: any) {
       toast({ variant: "destructive", title: "Registration Failed", description: error.message })
     } finally {
@@ -77,7 +77,7 @@ export default function LoginPage() {
     try {
         await signInWithEmailAndPassword(auth, emailId, password)
         toast({ title: "Login Successful" })
-        router.push("/")
+        router.push("/dashboard")
     } catch (error: any) {
         toast({ variant: "destructive", title: "Login Failed", description: "Invalid password." })
     } finally {

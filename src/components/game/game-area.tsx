@@ -142,16 +142,18 @@ export default function GameArea() {
     try {
         const allBetsQuery = query(
             collectionGroup(firestore, 'bets'),
-            where('roundId', '==', currentRoundId),
-            where('status', '==', 'active')
+            where('roundId', '==', currentRoundId)
         );
         const allBetsSnapshot = await getDocs(allBetsQuery);
 
+        const activeBetsInRound = allBetsSnapshot.docs.filter(doc => doc.data().status === 'active');
+        
         const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
-        const allBetsInRound: PlacedBetInfo[] = [];
-        allBetsSnapshot.forEach(doc => {
+        const allBetsData: PlacedBetInfo[] = [];
+
+        activeBetsInRound.forEach(doc => {
             const data = doc.data();
-            allBetsInRound.push({ id: doc.id, userId: data.userId, amount: data.amount, choice: data.choice });
+            allBetsData.push({ id: doc.id, userId: data.userId, amount: data.amount, choice: data.choice });
             if (data.choice.startsWith('color:')) {
                 const color = data.choice.split(':')[1];
                 if (color in colorTotals) {
@@ -161,7 +163,7 @@ export default function GameArea() {
         });
         
         let winningColor: 'green' | 'orange' | 'white';
-        if (allBetsInRound.length === 0) {
+        if (allBetsData.length === 0) {
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         } else {
@@ -188,7 +190,7 @@ export default function GameArea() {
         const batch = writeBatch(firestore);
         const userBalancesToUpdate: { [userId: string]: number } = {};
 
-        for (const bet of allBetsInRound) {
+        for (const bet of allBetsData) {
             const betDocRef = doc(firestore, 'users', bet.userId, 'bets', bet.id);
             const [betType, betValue] = bet.choice.split(':');
             let didWin = false;
@@ -218,7 +220,9 @@ export default function GameArea() {
                     const userRef = userDoc.ref;
                     const userData = userDoc.data() as User;
                     const payout = userBalancesToUpdate[userDoc.id];
-                    batch.update(userRef, { balance: (userData.balance || 0) + payout });
+                    if (payout > 0) {
+                        batch.update(userRef, { balance: (userData.balance || 0) + payout });
+                    }
                 }
             });
         }
@@ -228,13 +232,13 @@ export default function GameArea() {
 
         await batch.commit();
 
-        const currentUserBets = allBetsInRound.filter(b => b.userId === user?.uid);
+        const currentUserBets = allBetsData.filter(b => b.userId === user?.uid);
         if (currentUserBets.length > 0) {
             const currentUserTotalPayout = userBalancesToUpdate[user!.uid] || 0;
             if (currentUserTotalPayout > 0) {
                 toast({ title: "You Won!", description: `INR ${currentUserTotalPayout.toFixed(2)} has been added to your wallet.` });
             } else {
-                toast({ title: "You Lost!", variant: 'destructive' });
+                toast({ title: "You Lost", description: "Better luck next time!", variant: 'destructive' });
             }
         }
 

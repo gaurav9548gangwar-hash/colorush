@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { GameResult } from "@/lib/types";
 
 // Duration in seconds for each phase
 const BETTING_DURATION = 40;
@@ -16,7 +15,7 @@ export default function CountdownTimer({
   onNewRound,
   roundId,
 }: { 
-  onRoundEnd: (result: GameResult) => void;
+  onRoundEnd: () => void;
   onNewRound: () => void;
   roundId: string;
 }) {
@@ -48,15 +47,9 @@ export default function CountdownTimer({
       setPhase("locked");
     } else {
       if (phase !== "result") {
-         // Generate result only when transitioning to the result phase
-         const resultNumber = Math.floor(Math.random() * 10);
-         const resultColor = ['green', 'orange', 'white'][Math.floor(Math.random() * 3)] as 'green' | 'orange' | 'white';
-         onRoundEnd({
-            id: roundId,
-            gameId: roundId, 
-            resultNumber,
-            resultColor
-         });
+         // When transitioning to the result phase, call onRoundEnd
+         // The actual result calculation will now happen in game-area.tsx
+         onRoundEnd();
       }
       setPhase("result");
     }

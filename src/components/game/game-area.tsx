@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -25,8 +24,8 @@ import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
-import { useFirebase, useDoc, useMemoFirebase, useCollection, addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase";
-import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch } from "firebase/firestore";
+import { useFirebase, useDoc, useMemoFirebase, useCollection, setDocumentNonBlocking } from "@/firebase";
+import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -41,6 +40,7 @@ type PlacedBetInfo = {
     id: string;
     amount: number;
     choice: string;
+    userId: string;
 }
 
 const numberButtonColors = [
@@ -141,7 +141,7 @@ export default function GameArea() {
       await setDocumentNonBlocking(newBetRef, betData, {});
       
       // 3. Store current bet to check for win/loss later
-      setBetsThisRound(prev => [...prev, { id: newBetRef.id, amount: betAmount, choice: betChoice }]);
+      setBetsThisRound(prev => [...prev, { id: newBetRef.id, amount: betAmount, choice: betChoice, userId: user.uid }]);
 
       toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
       // 4. Reset selections for next round
@@ -155,69 +155,118 @@ export default function GameArea() {
     }
   };
   
-  const handleRoundEnd = async (result: GameResult) => {
-    setGameResult(result);
-    if (!firestore || !user || !userRef || betsThisRound.length === 0) return;
-  
+  const handleRoundEnd = async () => {
+    if (!firestore || !currentRoundId) return;
+
+    // 1. Fetch all 'active' bets for the current round across all users
+    const allUsersBetsQuery = query(
+      collection(firestore, 'bets'),
+      where('roundId', '==', currentRoundId),
+      where('status', '==', 'active')
+    );
+
     try {
-      const batch = writeBatch(firestore);
-  
-      // Find all potentially winning bets from this round
-      const winningBets = betsThisRound.filter(bet => {
-        const betColor = bet.choice.split(',').find(p => p.startsWith('color:'))?.split(':')[1];
-        return betColor === result.resultColor;
+      const allBetsSnapshot = await getDocs(allUsersBetsQuery);
+      const allBetsInRound: PlacedBetInfo[] = [];
+      allBetsSnapshot.forEach(doc => {
+          const data = doc.data();
+          allBetsInRound.push({
+              id: doc.id,
+              userId: data.userId,
+              amount: data.amount,
+              choice: data.choice,
+          })
       });
-  
-      let overallWin = false;
-      let totalPayout = 0;
-  
-      if (winningBets.length > 0) {
-        // If there are winning bets, find the one with the lowest amount
-        const lowestWinningBet = winningBets.reduce((minBet, currentBet) => {
-          return currentBet.amount < minBet.amount ? currentBet : minBet;
-        });
-  
-        // Mark all other bets as lost
-        for (const bet of betsThisRound) {
-          const betDocRef = doc(firestore, 'users', user.uid, 'bets', bet.id);
-          if (bet.id === lowestWinningBet.id) {
-            const payout = bet.amount * 2;
-            totalPayout += payout;
-            batch.update(betDocRef, { status: 'win', won: true, payout: payout });
-          } else {
-            batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
-          }
+
+      // 2. Calculate total bet amount for each color
+      const colorTotals = { green: 0, orange: 0, white: 0 };
+      allBetsInRound.forEach(bet => {
+        const betColor = bet.choice.split(',').find(p => p.startsWith('color:'))?.split(':')[1] as keyof typeof colorTotals;
+        if (betColor && colorTotals.hasOwnProperty(betColor)) {
+          colorTotals[betColor] += bet.amount;
         }
-        overallWin = true;
-      } else {
-        // If no bet matched the winning color, all bets are lost
-        for (const bet of betsThisRound) {
-          const betDocRef = doc(firestore, 'users', user.uid, 'bets', bet.id);
+      });
+      
+      // 3. Determine the winning color (the one with the least money)
+      let winningColor: keyof typeof colorTotals = 'green';
+      let minBet = colorTotals.green;
+      
+      if (colorTotals.orange < minBet) {
+          minBet = colorTotals.orange;
+          winningColor = 'orange';
+      }
+      if (colorTotals.white < minBet) {
+          winningColor = 'white';
+      }
+
+      // In case of a tie, randomly pick one of the winners
+      const tiedColors = (Object.keys(colorTotals) as (keyof typeof colorTotals)[]).filter(
+        color => colorTotals[color] === minBet
+      );
+      if (tiedColors.length > 1) {
+        winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
+      }
+
+      const result: GameResult = {
+        id: currentRoundId,
+        gameId: currentRoundId,
+        resultNumber: Math.floor(Math.random() * 10), // Result number is still random
+        resultColor: winningColor,
+        startTime: new Date().toISOString(),
+        status: 'finished'
+      };
+      
+      setGameResult(result);
+
+      // 4. Update bets and user balances
+      const batch = writeBatch(firestore);
+      let currentUserWon = false;
+      let currentUserPayout = 0;
+
+      for (const bet of allBetsInRound) {
+        const betColor = bet.choice.split(',').find(p => p.startsWith('color:'))?.split(':')[1];
+        const betDocRef = doc(firestore, 'users', bet.userId, 'bets', bet.id);
+        
+        if (betColor === winningColor) {
+          // This bet is a winner
+          const payout = bet.amount * 2; // Or your specific multiplier
+          batch.update(betDocRef, { status: 'win', won: true, payout: payout });
+          
+          const userToUpdateRef = doc(firestore, 'users', bet.userId);
+          const userDoc = await getDoc(userToUpdateRef);
+          if (userDoc.exists()) {
+            const currentBalance = userDoc.data().balance || 0;
+            batch.update(userToUpdateRef, { balance: currentBalance + payout });
+          }
+          
+          if (bet.userId === user?.uid) {
+              currentUserWon = true;
+              currentUserPayout += payout;
+          }
+        } else {
+          // This bet is a loser
           batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
         }
-        overallWin = false;
       }
-  
-      // Update user's balance
-      if (overallWin) {
-        const userDoc = await getDoc(userRef);
-        const currentBalance = (userDoc.data() as User)?.balance || 0;
-        const newBalance = currentBalance + totalPayout;
-        batch.update(userRef, { balance: newBalance });
-      }
-  
-      // Commit all the updates at once
+
+      // 5. Save the game result
+      const gameRoundRef = doc(firestore, 'game_rounds', currentRoundId);
+      batch.set(gameRoundRef, result);
+
+      // Commit all changes
       await batch.commit();
-  
-      // Show UI feedback
-      if (overallWin) {
-        setShowResultEmoji('win');
-        toast({ title: "You Won!", description: `INR ${totalPayout.toFixed(2)} has been added to your wallet.` });
-      } else {
-        setShowResultEmoji('loss');
-        toast({ title: "You Lost!", variant: 'destructive' });
+
+      // 6. Show feedback to the current user
+      if (betsThisRound.length > 0) { // Only show if current user placed a bet
+          if (currentUserWon) {
+            setShowResultEmoji('win');
+            toast({ title: "You Won!", description: `INR ${currentUserPayout.toFixed(2)} has been added to your wallet.` });
+          } else {
+            setShowResultEmoji('loss');
+            toast({ title: "You Lost!", variant: 'destructive' });
+          }
       }
-  
+
     } catch (error) {
       console.error("Error processing round end:", error);
       toast({ variant: "destructive", title: "Error", description: "Could not process round results." });
@@ -447,9 +496,4 @@ export default function GameArea() {
       </div>
     </section>
   );
-    
-
-
-
-
     

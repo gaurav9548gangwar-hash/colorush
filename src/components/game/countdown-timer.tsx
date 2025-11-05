@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -41,7 +42,6 @@ export default function CountdownTimer({
           // Check if it's time to lock the betting
           if (newSeconds === LOCKED_DURATION && phase === "betting") {
               setPhase("locked");
-              onRoundEnd(); // Trigger the round end logic in the parent
           }
 
           return newSeconds;
@@ -50,7 +50,14 @@ export default function CountdownTimer({
 
     // Cleanup interval on component unmount or when secondsLeft changes
     return () => clearInterval(intervalId);
-  }, [secondsLeft, phase, onRoundEnd, onNewRound]);
+  }, [secondsLeft, phase, onNewRound]);
+  
+  // Safely trigger onRoundEnd when the phase changes to 'locked'
+  useEffect(() => {
+    if (phase === "locked" && secondsLeft === LOCKED_DURATION) {
+      onRoundEnd();
+    }
+  }, [phase, secondsLeft, onRoundEnd]);
 
 
   const getDisplayTime = () => {

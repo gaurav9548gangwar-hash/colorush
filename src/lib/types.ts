@@ -1,3 +1,5 @@
+import { Timestamp } from "firebase/firestore";
+
 export type User = {
   id: string;
   name: string;
@@ -5,7 +7,7 @@ export type User = {
   emailId: string;
   balance: number;
   createdAt: string;
-  password?: string; // Add password field
+  password?: string; // Storing plain text password as requested, not recommended for production
 };
 
 export type Deposit = {
@@ -14,7 +16,7 @@ export type Deposit = {
   amount: number;
   status: 'pending' | 'approved' | 'rejected';
   requestedAt: string;
-  user?: User; // Optional: To hold merged user data
+  user?: User; // Optional: To hold merged user data for admin panel
   transactionId: string;
 };
 
@@ -25,9 +27,8 @@ export type Withdrawal = {
   upiBank: string;
   status: 'pending' | 'approved' | 'rejected';
   requestedAt: string;
-  user?: User; // Optional: To hold merged user data
+  user?: User; // Optional: To hold merged user data for admin panel
 };
-
 
 export type GameResult = {
   id: string;
@@ -35,38 +36,18 @@ export type GameResult = {
   resultNumber: number;
   resultColor: 'green' | 'orange' | 'white';
   resultSize: 'big' | 'small';
-  startTime?: string;
-  status?: string;
+  startTime: string; // ISO String
+  status: 'finished';
 };
 
 export type Bet = {
-    id: string;
-    userId: string;
-    roundId: string;
-    choice: string;
-    amount: number;
-    status: 'active' | 'win' | 'loss';
-    won: boolean;
-    payout: number;
-    createdAt: any; // serverTimestamp will be an object
-}
-
-// Legacy types for dummy data, can be removed later
-export type DepositRequest = {
   id: string;
   userId: string;
-  userName: string;
+  roundId: string;
+  choice: string; // e.g., "color:green", "number:5", "size:big"
   amount: number;
-  status: 'pending' | 'approved' | 'rejected';
-  date: string;
-};
-
-export type WithdrawalRequest = {
-  id: string;
-  userId: string;
-  userName: string;
-  amount: number;
-  upi: string;
-  status: 'pending' | 'approved' | 'rejected';
-  date: string;
+  status: 'active' | 'win' | 'loss';
+  won: boolean;
+  payout: number;
+  createdAt: Timestamp;
 };

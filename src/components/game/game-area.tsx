@@ -9,7 +9,6 @@ import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { Badge } from "../ui/badge";
 
 type BetSelection = {
   type: 'color' | 'number' | 'size' | null;
@@ -22,7 +21,7 @@ export default function GameArea() {
   const [multiplier, setMultiplier] = useState(1);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
   
-  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
+  const [currentRoundId, setCurrentRoundId] = useState<string>('');
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -31,10 +30,10 @@ export default function GameArea() {
 
    useEffect(() => {
     // Generate the initial round ID only on the client side to avoid hydration errors
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !currentRoundId) {
         setCurrentRoundId(`round_${new Date().getTime()}`);
     }
-  }, []);
+  }, [currentRoundId]);
 
 
   const isBetReady = selection.type !== null && (betAmount * multiplier) > 0;
@@ -105,118 +104,129 @@ export default function GameArea() {
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      // Re-add balance on failure might be complex, user should refresh.
     }
   };
   
- const handleRoundEnd = useCallback(async () => {
+  const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
 
     setIsBettingLocked(true);
     setIsProcessing(true);
 
     try {
-        const allBetsInRoundQuery = query(
-            collection(firestore, 'bets'),
-            where('roundId', '==', currentRoundId),
-            where('status', '==', 'active')
-        );
-        const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
-        const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
-        
-        const colorTotals = { green: 0, orange: 0, white: 0 };
-        const numberColorMap: { [key: number]: 'green' | 'orange' | 'white' } = {
-          1: 'green', 3: 'green', 7: 'green', 9: 'green',
-          2: 'orange', 4: 'orange', 6: 'orange', 8: 'orange',
-          0: 'white', 5: 'white',
-        };
+      // 1. Get all active bets for the current round
+      const betsQuery = query(
+        collection(firestore, 'bets'),
+        where('roundId', '==', currentRoundId),
+        where('status', '==', 'active')
+      );
+      const betsSnapshot = await getDocs(betsQuery);
+      const activeBets = betsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
 
-        activeBets.forEach(bet => {
-            const [type, value] = bet.choice.split(':');
-            const betAmount = bet.amount;
+      // 2. Calculate potential payout for each color to decide the winner
+      const colorPayouts = { green: 0, orange: 0, white: 0 };
+      const numberColorMap: { [key: number]: 'green' | 'orange' | 'white' } = {
+        1: 'green', 3: 'green', 7: 'green', 9: 'green',
+        2: 'orange', 4: 'orange', 6: 'orange', 8: 'orange',
+        0: 'white', 5: 'white',
+      };
 
-            if (type === 'color') {
-                if (value === 'green') colorTotals.green += betAmount * 2;
-                if (value === 'orange') colorTotals.orange += betAmount * 2;
-                if (value === 'white') colorTotals.white += betAmount * 2;
-            } else if (type === 'number') {
-                const num = parseInt(value);
-                const colorOfNumber = numberColorMap[num];
-                if (colorOfNumber) {
-                    colorTotals[colorOfNumber] += betAmount * 9;
-                }
-            }
-        });
+      activeBets.forEach(bet => {
+        const [type, value] = bet.choice.split(':');
+        const amount = bet.amount;
 
-        let winningColor: 'green' | 'orange' | 'white';
-        if (activeBets.length > 0) {
-            const minPayout = Math.min(colorTotals.green, colorTotals.orange, colorTotals.white);
-            const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minPayout);
-            winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
+        if (type === 'color') {
+          if (value === 'green') colorPayouts.green += amount * 2;
+          if (value === 'orange') colorPayouts.orange += amount * 2;
+          if (value === 'white') colorPayouts.white += amount * 4.5;
+        } else if (type === 'number') {
+          const num = parseInt(value);
+          const colorOfNumber = numberColorMap[num];
+          if (colorOfNumber) {
+            colorPayouts[colorOfNumber] += amount * 9;
+          }
+        }
+      });
+      
+      // Decide winning color (lowest payout)
+      let winningColor: 'green' | 'orange' | 'white';
+      if (activeBets.length > 0) {
+        const minPayout = Math.min(colorPayouts.green, colorPayouts.orange, colorPayouts.white);
+        const winningColors = (Object.keys(colorPayouts) as ('green' | 'orange' | 'white')[]).filter(c => colorPayouts[c] === minPayout);
+        winningColor = winningColors[Math.floor(Math.random() * winningColors.length)];
+      } else {
+        winningColor = (['green', 'orange', 'white'] as const)[Math.floor(Math.random() * 3)];
+      }
+
+      // Decide winning number and size
+      const winningNumber = Math.floor(Math.random() * 10);
+      const winningSize = winningNumber >= 5 ? 'big' : 'small';
+
+      // 3. Create the final result object
+      const resultData: GameResult = {
+        id: currentRoundId,
+        gameId: currentRoundId,
+        resultNumber: winningNumber,
+        resultColor: winningColor,
+        resultSize: winningSize,
+        startTime: new Date().toISOString(),
+        status: 'finished'
+      };
+      
+      // 4. Set result for UI display IMMEDIATELY
+      setGameResult(resultData); 
+
+      // 5. Create a single atomic batch to update everything in Firestore
+      const batch = writeBatch(firestore);
+
+      // 5a. Add the round result to the batch
+      const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
+      batch.set(roundDocRef, resultData);
+
+      const userPayouts: { [userId: string]: number } = {};
+
+      // 5b. Process each bet and add updates to the batch
+      for (const bet of activeBets) {
+        const betDocRef = doc(firestore, 'bets', bet.id);
+        const [betType, betValue] = bet.choice.split(':');
+        let didWin = false;
+        let payout = 0;
+        let betMultiplier = 0;
+
+        if (betType === 'color' && betValue === winningColor) { didWin = true; betMultiplier = betValue === 'white' ? 4.5 : 2; }
+        if (betType === 'number' && Number(betValue) === winningNumber) { didWin = true; betMultiplier = 9; }
+        if (betType === 'size' && betValue === winningSize) { didWin = true; betMultiplier = 1.5; }
+
+        if (didWin) {
+          payout = bet.amount * betMultiplier;
+          batch.update(betDocRef, { status: 'win', won: true, payout: payout });
+          userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
         } else {
-            const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
-            winningColor = colors[Math.floor(Math.random() * colors.length)];
+          batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
         }
+      }
 
-        const winningNumber = Math.floor(Math.random() * 10);
-        const winningSize = winningNumber >= 5 ? 'big' : 'small';
+      // 5c. Fetch user balances and add balance updates to the batch
+      const userIdsToUpdate = Object.keys(userPayouts);
+      if (userIdsToUpdate.length > 0) {
+        const userDocs = await Promise.all(userIdsToUpdate.map(uid => getDoc(doc(firestore, 'users', uid))));
+        userDocs.forEach(userDoc => {
+          if (userDoc.exists()) {
+            const currentBalance = userDoc.data().balance || 0;
+            const totalPayout = userPayouts[userDoc.id];
+            batch.update(userDoc.ref, { balance: currentBalance + totalPayout });
+          }
+        });
+      }
 
-        const resultData: GameResult = {
-            id: currentRoundId,
-            gameId: currentRoundId,
-            resultNumber: winningNumber,
-            resultColor: winningColor,
-            resultSize: winningSize,
-            startTime: new Date().toISOString(),
-            status: 'finished'
-        };
-        
-        setGameResult(resultData);
-
-        const batch = writeBatch(firestore);
-        const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
-        batch.set(roundDocRef, resultData);
-        
-        const userPayouts: { [userId: string]: number } = {};
-
-        for (const bet of activeBets) {
-            const betDocRef = doc(firestore, 'bets', bet.id);
-            const [betType, betValue] = bet.choice.split(':');
-            let didWin = false;
-            let payout = 0;
-
-            if (betType === 'color' && betValue === winningColor) { didWin = true; payout = bet.amount * 2; }
-            if (betType === 'number' && Number(betValue) === winningNumber) { didWin = true; payout = bet.amount * 9; }
-            if (betType === 'size' && betValue === winningSize) { didWin = true; payout = bet.amount * 1.5; }
-
-            if (didWin) {
-                batch.update(betDocRef, { status: 'win', won: true, payout: payout });
-                userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
-            } else {
-                batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
-            }
-        }
-        
-        const userIdsToUpdate = Object.keys(userPayouts);
-        if (userIdsToUpdate.length > 0) {
-            for (const uid of userIdsToUpdate) {
-                const userRefToUpdate = doc(firestore, 'users', uid);
-                const userDoc = await getDoc(userRefToUpdate);
-                if (userDoc.exists()) {
-                    const currentBalance = userDoc.data().balance || 0;
-                    const totalPayout = userPayouts[uid];
-                    batch.update(userRefToUpdate, { balance: currentBalance + totalPayout });
-                }
-            }
-        }
-        
-        await batch.commit();
+      // 6. Commit the atomic batch
+      await batch.commit();
 
     } catch (error) {
-        console.error("Error in handleRoundEnd: ", error);
-        toast({ variant: "destructive", title: "Round Error", description: "Could not process round results." });
+      console.error("Error in handleRoundEnd: ", error);
+      toast({ variant: "destructive", title: "Round Error", description: "Could not process round results." });
     } finally {
-        setIsProcessing(false);
+      setIsProcessing(false);
     }
   }, [firestore, currentRoundId, toast]);
   

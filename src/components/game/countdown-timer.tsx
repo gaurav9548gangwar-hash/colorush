@@ -42,9 +42,9 @@ export default function CountdownTimer({
   
   // Effect to manage phase transitions and trigger round end
   useEffect(() => {
-    if (secondsLeft <= LOCKED_DURATION && phase === "betting") {
+    if (secondsLeft === LOCKED_DURATION && phase === "betting") {
       setPhase("locked");
-      onRoundEnd(); 
+      onRoundEnd();
     }
   }, [secondsLeft, phase, onRoundEnd]);
 

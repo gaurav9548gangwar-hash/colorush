@@ -3,7 +3,6 @@
 
 import { useState, useEffect } from "react";
 
-// Duration in seconds for each phase
 const BETTING_DURATION = 40;
 const LOCKED_DURATION = 20;
 const TOTAL_DURATION = BETTING_DURATION + LOCKED_DURATION;
@@ -22,54 +21,42 @@ export default function CountdownTimer({
   const [totalSeconds, setTotalSeconds] = useState(TOTAL_DURATION);
   const [phase, setPhase] = useState<GamePhase>("betting");
 
-  // This effect resets the timer whenever a new round starts (i.e., roundId changes).
+  // Effect to reset the timer whenever a new round starts (i.e., roundId changes).
   useEffect(() => {
     setTotalSeconds(TOTAL_DURATION);
     setPhase("betting");
   }, [roundId]);
 
-  // This is the main timer interval.
+  // Main timer interval.
   useEffect(() => {
     const interval = setInterval(() => {
       setTotalSeconds((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [roundId]); // It also resets if the roundId changes.
+  }, [roundId]); 
 
-  // This effect handles phase transitions and event emissions.
+  // Effect to handle phase transitions and event emissions.
   useEffect(() => {
-    // When the timer hits 0, it triggers the start of a new round.
     if (totalSeconds === 0) {
       onNewRound();
     } else if (totalSeconds <= LOCKED_DURATION) {
-      // When the timer enters the locked duration...
       if (phase === "betting") {
-        // And if the *previous* phase was 'betting', it means we just transitioned.
-        // This is the precise moment to trigger the end-of-round logic.
         onRoundEnd();
+        setPhase("locked");
       }
-      setPhase("locked");
     } else {
-      // Any other time, it's the betting phase.
-      setPhase("betting");
+       setPhase("betting");
     }
   }, [totalSeconds, phase, onRoundEnd, onNewRound]);
 
 
   const getDisplayTime = () => {
     let secondsInPhase;
-    switch(phase) {
-      case 'betting':
-        // Shows time remaining in the betting phase
+    if (phase === 'betting') {
         secondsInPhase = totalSeconds - LOCKED_DURATION;
-        break;
-      case 'locked':
-        // Shows time remaining until the next round starts
+    } else {
         secondsInPhase = totalSeconds;
-        break;
-      default:
-        secondsInPhase = 0;
     }
     const minutes = Math.floor(secondsInPhase / 60);
     const remainingSeconds = secondsInPhase % 60;

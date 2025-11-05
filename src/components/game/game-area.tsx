@@ -37,7 +37,6 @@ type BetSelection = {
   value: string | number | null;
 };
 
-// Represents a bet fetched from Firestore for result calculation
 type PlacedBetInfo = {
     id: string;
     userId: string;
@@ -50,7 +49,7 @@ export default function GameArea() {
   const [betAmount, setBetAmount] = useState(10);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
-  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
+  const [currentRoundId, setCurrentRoundId] = useState<string>(`round_${new Date().getTime()}`);
   
   const [pastResults, setPastResults] = useState<GameResult[]>([]);
   const [userBets, setUserBets] = useState<Bet[]>([]);
@@ -64,37 +63,32 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
-  // Effect for initializing the first round
-  useEffect(() => {
-    setCurrentRoundId(`round_${new Date().getTime()}`);
-  }, []);
-  
-  // Effect for fetching past game results
+  // Effect for fetching past game results in real-time
   useEffect(() => {
     if (!firestore) return;
-    const gameRoundsQuery = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10));
-    const unsubscribe = onSnapshot(gameRoundsQuery, (snapshot) => {
+    const q = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const results = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as GameResult));
       setPastResults(results);
+    }, (error) => {
+        console.error("Error fetching past results:", error);
     });
     return () => unsubscribe();
   }, [firestore]);
   
-  // Effect for fetching the current user's bets
+  // Effect for fetching the current user's bets in real-time
   useEffect(() => {
     if (!firestore || !user) {
         setUserBets([]);
         return;
     };
     
-    // This query is now safe and will not cause infinite loops.
-    const userBetsQuery = query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
-    const unsubscribe = onSnapshot(userBetsQuery, (snapshot) => {
+    const q = query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
         const bets = snapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
         setUserBets(bets);
     }, (error) => {
-        console.error("Failed to fetch user bets in real-time", error);
-        // We can optionally create and emit a FirestorePermissionError here
+        console.error("Failed to fetch user bets in real-time:", error);
     });
 
     return () => unsubscribe();
@@ -129,8 +123,7 @@ export default function GameArea() {
     try {
       const newBalance = userData.balance - betAmount;
       if (userRef) {
-        // This is an optimistic update.
-        await updateDoc(userRef, { balance: newBalance });
+        updateDoc(userRef, { balance: newBalance });
       }
       
       const newBetRef = collection(firestore, `bets`);
@@ -157,7 +150,7 @@ export default function GameArea() {
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
       // If bet fails, revert the balance optimistically
       if (userRef && userData) {
-        await updateDoc(userRef, { balance: userData.balance });
+        updateDoc(userRef, { balance: userData.balance });
       }
     }
   };
@@ -240,7 +233,6 @@ export default function GameArea() {
 
         await batch.commit();
 
-        // Update user balances in a separate, safer batch
         if (Object.keys(userPayouts).length > 0) {
             const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
                 const userToUpdateRef = doc(firestore, 'users', uid);
@@ -259,14 +251,13 @@ export default function GameArea() {
                     console.error(`Failed to update balance for user ${uid}:`, e);
                 }
             });
-            await Promise.allSettled(userUpdatePromises); // Prevents one failure from crashing all updates
+            await Promise.allSettled(userUpdatePromises);
         }
 
     } catch(serverError: any) {
         console.error("Error in handleRoundEnd: ", serverError);
-        // This is a critical server-side error. Emitting a general error.
         const permissionError = new FirestorePermissionError({
-            path: 'bets/game_rounds/users',
+            path: 'bets/game_rounds',
             operation: 'write',
             requestResourceData: { roundId: currentRoundId, message: "Failed during result calculation." }
         });
@@ -281,9 +272,6 @@ export default function GameArea() {
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
 
-  if (!currentRoundId) {
-    return <div className="text-center p-8">Loading Game...</div>;
-  }
 
   return (
     <section className="space-y-4 relative">
@@ -458,5 +446,3 @@ export default function GameArea() {
     </section>
   );
 }
-
-    

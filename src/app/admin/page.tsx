@@ -185,12 +185,23 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
     const { firestore, auth } = useFirebase();
     const { toast } = useToast();
 
+    // Simpler query without orderBy to avoid complex indexing issues with rules.
     const depositsRef = useMemoFirebase(() => {
       if (!firestore || !auth?.currentUser) return null;
-      return query(collection(firestore, 'deposits'), where('status', '==', 'pending'), orderBy('createdAt', 'desc'))
+      return query(collection(firestore, 'deposits'), where('status', '==', 'pending'))
     }, [firestore, auth, keyForRefresh]);
 
     const { data: deposits, isLoading, error } = useCollection<DepositRequest>(depositsRef);
+
+    // Client-side sorting
+    const sortedDeposits = useMemo(() => {
+        if (!deposits) return [];
+        return [...deposits].sort((a, b) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+            return dateB.getTime() - dateA.getTime();
+        });
+    }, [deposits]);
 
     const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
@@ -207,7 +218,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
         try {
             await batch.commit();
             toast({ title: 'Success', description: `Request has been ${newStatus}.` });
-            onUpdate();
+            onUpdate(); // This will trigger a re-fetch because the key changes
         } catch (err) {
             const contextualError = new FirestorePermissionError({
                 path: requestRef.path,
@@ -219,9 +230,12 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
         }
     }
 
-    const formatDate = (timestamp: Timestamp) => {
-        if (timestamp && typeof timestamp.toDate === 'function') {
-            return timestamp.toDate().toLocaleString();
+    const formatDate = (timestamp: Timestamp | Date) => {
+        if (timestamp && typeof (timestamp as Timestamp).toDate === 'function') {
+            return (timestamp as Timestamp).toDate().toLocaleString();
+        }
+        if (timestamp instanceof Date) {
+            return timestamp.toLocaleString();
         }
         return 'Invalid Date';
     }
@@ -244,7 +258,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {deposits && deposits.length > 0 ? deposits.map(req => (
+                            {sortedDeposits.length > 0 ? sortedDeposits.map(req => (
                                 <TableRow key={req.id}>
                                     <TableCell>{req.userName}</TableCell>
                                     <TableCell>₹{req.amount.toFixed(2)}</TableCell>
@@ -273,12 +287,23 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
     const { firestore, auth } = useFirebase();
     const { toast } = useToast();
 
+    // Simpler query without orderBy
     const withdrawalsRef = useMemoFirebase(() => {
       if (!firestore || !auth?.currentUser) return null;
-      return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'), orderBy('createdAt', 'desc'))
+      return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'))
     },[firestore, auth, keyForRefresh]);
     
     const { data: withdrawals, isLoading, error } = useCollection<WithdrawalRequest>(withdrawalsRef);
+
+    // Client-side sorting
+    const sortedWithdrawals = useMemo(() => {
+        if (!withdrawals) return [];
+        return [...withdrawals].sort((a, b) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+            return dateB.getTime() - dateA.getTime();
+        });
+    }, [withdrawals]);
     
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
@@ -294,8 +319,10 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                 
                 if (currentBalance < request.amount) {
                     toast({ variant: 'destructive', title: 'Insufficient Balance', description: 'User does not have enough funds for this withdrawal.' });
+                    // Reject the request if balance is insufficient
                     batch.update(requestRef, { status: 'rejected', reason: 'Insufficient balance' });
                 } else {
+                    // Deduct balance and approve
                     batch.update(userRef, { balance: increment(-request.amount) });
                     batch.update(requestRef, { status: 'approved' });
                 }
@@ -304,7 +331,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
             }
 
             await batch.commit();
-            toast({ title: 'Success', description: `Request has been ${newStatus}.` });
+            toast({ title: 'Success', description: `Request has been processed.` });
             onUpdate();
         } catch (err) {
              const contextualError = new FirestorePermissionError({
@@ -317,9 +344,12 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
         }
     }
 
-    const formatDate = (timestamp: Timestamp) => {
-        if (timestamp && typeof timestamp.toDate === 'function') {
-            return timestamp.toDate().toLocaleString();
+    const formatDate = (timestamp: Timestamp | Date) => {
+        if (timestamp && typeof (timestamp as Timestamp).toDate === 'function') {
+            return (timestamp as Timestamp).toDate().toLocaleString();
+        }
+        if (timestamp instanceof Date) {
+            return timestamp.toLocaleString();
         }
         return 'Invalid Date';
     }
@@ -342,7 +372,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                           </TableRow>
                       </TableHeader>
                       <TableBody>
-                          {withdrawals && withdrawals.length > 0 ? withdrawals.map(req => (
+                          {sortedWithdrawals.length > 0 ? sortedWithdrawals.map(req => (
                               <TableRow key={req.id}>
                                   <TableCell>{req.userName}</TableCell>
                                   <TableCell>₹{req.amount.toFixed(2)}</TableCell>

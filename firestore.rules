@@ -19,12 +19,13 @@ service cloud.firestore {
       allow create: if isOwner(userId);
       allow read, update: if isOwner(userId) || isAdmin();
       allow delete: if isOwner(userId);
+      // Admin can list all users. The query in the app is simple and doesn't need complex rules.
       allow list: if isAdmin();
     }
 
     match /deposits/{depositId} {
-      // Admin can list pending deposit requests.
-      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      // Admin can list documents where status is 'pending'. The app now queries just by this field.
+      allow list: if isAdmin() && request.query.where.size() == 1 && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
       
       // An admin or the owner can get a specific deposit request.
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
@@ -40,8 +41,8 @@ service cloud.firestore {
     }
 
      match /withdrawals/{withdrawalId} {
-      // Admin can list pending withdrawal requests.
-      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      // Admin can list documents where status is 'pending'. The app now queries just by this field.
+      allow list: if isAdmin() && request.query.where.size() == 1 && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
       
       // An admin or the owner can get a specific withdrawal request.
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);

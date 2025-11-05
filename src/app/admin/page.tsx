@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -89,6 +90,8 @@ export default function AdminPage() {
   const { toast } = useToast();
   const [isAuthenticating, setIsAuthenticating] = useState(true);
 
+  const forceUserRefresh = () => setKey(prevKey => prevKey + 1);
+
   useEffect(() => {
     // Check if the user is logged in via session storage
     if (sessionStorage.getItem('isAdminLoggedIn') !== 'true') {
@@ -97,8 +100,6 @@ export default function AdminPage() {
       setIsAuthenticating(false);
     }
   }, [router]);
-
-  const forceUserRefresh = () => setKey(prevKey => prevKey + 1);
   
   const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore, key]);
   const { data: users, isLoading: isLoadingUsers, error: usersError } = useCollection<User>(usersRef);
@@ -216,7 +217,7 @@ export default function AdminPage() {
       await batch.commit();
 
       toast({ title: 'Success', description: `Request has been ${action}.` });
-      // No need for manual refresh with onSnapshot
+      forceUserRefresh(); // Force a refresh of the user list
     } catch (error) {
       console.error(`Failed to ${action} request:`, error);
       toast({ variant: 'destructive', title: 'Error', description: `Could not process the request.` });
@@ -337,7 +338,7 @@ export default function AdminPage() {
                                         <TableCell>
                                             {d.screenshotUrl ? (
                                                 <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                                    <img src={d.screenshotUrl} alt="Deposit Screenshot" className="h-16 w-16 object-cover rounded-md" />
+                                                    View
                                                 </a>
                                             ) : d.status === 'pending_upload' ? (
                                                 <span className="text-muted-foreground text-xs">Uploading...</span>

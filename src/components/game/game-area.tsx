@@ -68,10 +68,10 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
-  // Effect for fetching past game results in real-time
+  // Effect for fetching past game results in real-time (last 20)
   useEffect(() => {
     if (!firestore) return;
-    const q = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10));
+    const q = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(20));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const results = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as GameResult));
       setPastResults(results);
@@ -88,7 +88,9 @@ export default function GameArea() {
         return;
     };
     
+    // Query for user's bets, ordered by creation time
     const q = query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const bets = snapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
         setUserBets(bets);
@@ -126,6 +128,7 @@ export default function GameArea() {
     }
 
     try {
+      // Optimistically deduct balance from user's wallet
       const newBalance = userData.balance - betAmount;
       if (userRef) {
         updateDoc(userRef, { balance: newBalance });
@@ -140,11 +143,12 @@ export default function GameArea() {
         choice: betChoice,
         amount: betAmount,
         status: 'active',
-        createdAt: Timestamp.now(),
+        createdAt: Timestamp.now(), // Use Firestore Timestamp for proper ordering
         payout: 0,
         won: false,
       };
 
+      // Add the new bet to the 'bets' collection
       await addDoc(newBetRef, betData);
 
       toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
@@ -153,7 +157,7 @@ export default function GameArea() {
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      // If bet fails, revert the balance optimistically
+      // If bet placement fails, revert the balance optimistically
       if (userRef && userData) {
         updateDoc(userRef, { balance: userData.balance });
       }
@@ -166,6 +170,7 @@ export default function GameArea() {
     setIsBettingLocked(true);
 
     try {
+        // Query for all active bets placed in the current round
         const allBetsInRoundQuery = query(
             collection(firestore, 'bets'),
             where('roundId', '==', currentRoundId),
@@ -174,25 +179,29 @@ export default function GameArea() {
         const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
         const activeBetsData: PlacedBetInfo[] = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlacedBetInfo));
         
+        // Smart logic to determine winning color (the one with the minimum total bet amount)
         const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
         activeBetsData.forEach(bet => {
             if (bet.choice.startsWith('color:')) {
                 const color = bet.choice.split(':')[1];
                 if (color in colorTotals) {
-                    colorTotals[color] += bet.amount;
+                    colorTotals[color] += bet.amount * 2; // Potential payout
                 }
             }
         });
         
         let winningColor: 'green' | 'orange' | 'white';
+        // If no bets are placed, pick a random color
         if (activeBetsData.length === 0) {
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         } else {
+            // Find the color with the minimum potential payout
             const minBet = Math.min(...Object.values(colorTotals));
             const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(
                 color => colorTotals[color] === minBet
             );
+            // If there's a tie, pick randomly among the tied colors
             winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
         }
         
@@ -211,6 +220,7 @@ export default function GameArea() {
         const batch = writeBatch(firestore);
         const userPayouts: { [userId: string]: number } = {};
 
+        // Calculate winnings for each bet
         for (const bet of activeBetsData) {
             const betDocRef = doc(firestore, 'bets', bet.id);
             const [betType, betValue] = bet.choice.split(':');
@@ -227,40 +237,49 @@ export default function GameArea() {
 
             if (didWin) {
                 batch.update(betDocRef, { status: 'win', won: true, payout: payout });
+                // Aggregate payouts per user
                 userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
             } else {
                 batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
             }
         }
         
+        // Save the game round result
         const gameRoundRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(gameRoundRef, resultData);
 
+        // Commit all bet updates and the game result in one atomic operation
         await batch.commit();
 
+        // After the batch is committed, update user balances for winners
         if (Object.keys(userPayouts).length > 0) {
             const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
                 const userToUpdateRef = doc(firestore, 'users', uid);
                 const payoutAmount = userPayouts[uid];
                 try {
+                    // Fetch the user document to get the current balance
                     const userDoc = await getDoc(userToUpdateRef);
                     if (userDoc.exists()) {
                         const currentBalance = userDoc.data().balance || 0;
                         await updateDoc(userToUpdateRef, { balance: currentBalance + payoutAmount });
 
+                        // Show toast only to the current user if they won
                         if(user && uid === user.uid && payoutAmount > 0) {
                             toast({ title: "You Won!", description: `INR ${payoutAmount.toFixed(2)} has been added to your wallet.` });
                         }
                     }
                 } catch (e) {
                     console.error(`Failed to update balance for user ${uid}:`, e);
+                    // Handle failure for a single user update if necessary
                 }
             });
+            // Use Promise.allSettled to ensure all updates are attempted, even if some fail
             await Promise.allSettled(userUpdatePromises);
         }
 
     } catch(serverError: any) {
         console.error("Error in handleRoundEnd: ", serverError);
+        // Create and emit a contextual error for permission issues
         const permissionError = new FirestorePermissionError({
             path: 'bets/game_rounds',
             operation: 'write',
@@ -270,13 +289,16 @@ export default function GameArea() {
     }
   }, [firestore, currentRoundId, user, toast]);
   
+  // Resets the game state for a new round
   const handleNewRound = useCallback(() => {
     setGameResult(null);
     setIsBettingLocked(false);
     setSelection({ type: null, value: null });
+    // Generate a new unique ID for the new round
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
 
+  // Render a loading state or null if the round ID isn't set yet
   if (!currentRoundId) {
     return null; // Or a loading indicator
   }

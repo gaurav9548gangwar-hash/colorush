@@ -6,44 +6,65 @@ service cloud.firestore {
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
-
-    // This function should be updated with your actual admin logic,
-    // e.g., checking a custom claim. For now, we allow any authenticated user
-    // to have admin-like list access for the admin panel to work.
-    // In a real app, you'd have a secure way to identify admins.
+    
     function isAdmin() {
-      // WARNING: In a real app, this should check for an admin custom claim.
-      // E.g., return request.auth.token.admin == true;
-      // For this app's purpose, we allow any authenticated user for the admin panel.
+      // For this app, we allow any authenticated user to have admin privileges
+      // for the admin panel to work. In a real production app, this should
+      // be locked down to a specific UID or check for a custom claim.
+      // e.g., return request.auth.token.admin == true;
       return request.auth != null;
     }
 
-    match /deposits/{depositId} {
-      allow get: if request.auth.uid == resource.data.userId || isAdmin();
+    match /users/{userId} {
+      // A user can create their own profile document.
+      allow create: if isOwner(userId);
+      
+      // An admin can read any user's data. A user can only read their own.
+      allow read: if isOwner(userId) || isAdmin();
+
+      // A user can only update their own profile. Admin can update any.
+      allow update: if isOwner(userId) || isAdmin();
+      
+      // A user can delete their own profile.
+      allow delete: if isOwner(userId);
+      
+      // Admin can list all users.
       allow list: if isAdmin();
+    }
+
+    match /deposits/{depositId} {
+      // Admin can list pending deposit requests.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      
+      // An admin or the owner can get a specific deposit request.
+      allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
+
+      // A user can create their own deposit request.
       allow create: if request.auth.uid == request.resource.data.userId;
+      
+      // Only an admin can update (approve/reject) a deposit request.
       allow update: if isAdmin();
+      
+      // No one can delete a deposit request to maintain history.
       allow delete: if false; 
     }
 
      match /withdrawals/{withdrawalId} {
-      allow get: if request.auth.uid == resource.data.userId || isAdmin();
-      allow list: if isAdmin();
+      // Admin can list pending withdrawal requests.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      
+      // An admin or the owner can get a specific withdrawal request.
+      allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
+
+      // A user can create their own withdrawal request.
       allow create: if request.auth.uid == request.resource.data.userId;
+      
+      // Only an admin can update (approve/reject) a withdrawal request.
       allow update: if isAdmin();
+
+      // No one can delete a withdrawal request to maintain history.
       allow delete: if false;
      }
-    
-    match /users/{userId} {
-      // A user can create their own profile.
-      allow create: if isOwner(userId);
-      // A user can delete their own profile.
-      allow delete: if isOwner(userId);
-      // A user can only read and update their own profile. Admin can read/update any.
-      allow read, update: if isOwner(userId) || isAdmin();
-      // Admin can list all users.
-      allow list: if isAdmin();
-    }
     
     match /bets/{betId} {
       // Users can create their own bets.
@@ -63,7 +84,7 @@ service cloud.firestore {
       // Game rounds are public information.
       allow read: if true;
       // In a production app, writes should be locked down to a trusted server environment.
-      // For this app, we allow client-side creation of game results from the game logic.
+      // For this app, we allow any authenticated user to create game results for simplicity.
       allow write: if isAdmin();
     }
   }

@@ -4,15 +4,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { CountdownTimer } from './countdown-timer'
+import { CountdownTimer, LOCKED_DURATION } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
 import { useFirebase } from '@/firebase'
-import type { Bet, BetColor, BetSize, BetTarget, GameResult } from '@/lib/types'
-import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp } from 'firebase/firestore'
+import type { Bet, BetColor, BetSize, BetTarget, GameResult, User } from '@/lib/types'
+import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp, getDoc, updateDoc, increment } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
 import { v4 as uuidv4 } from 'uuid'
 import { PastResultsTab } from './past-results-tab'
 import { MyBetsTab } from './my-bets-tab'
+import { errorEmitter } from '@/firebase/error-emitter'
+import { FirestorePermissionError } from '@/firebase/errors'
 
 const getWinningSize = (num: number): BetSize => (num >= 5 ? 'big' : 'small')
 
@@ -35,7 +37,8 @@ export function GameArea() {
     setIsProcessing(false)
     setIsBettingLocked(false)
     setGameResult(null)
-    setCurrentRoundId(uuidv4())
+    const newRoundId = new Date().getTime().toString();
+    setCurrentRoundId(newRoundId)
   }, [])
   
   useEffect(() => {
@@ -50,88 +53,120 @@ export function GameArea() {
     setIsProcessing(true);
   
     try {
-      const betsRef = collection(firestore, 'bets');
-      const q = query(betsRef, where('roundId', '==', currentRoundId));
-      const betSnapshot = await getDocs(q);
-      const bets = betSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
+        const betsRef = collection(firestore, 'bets');
+        const q = query(betsRef, where('roundId', '==', currentRoundId));
+        const betSnapshot = await getDocs(q);
+        const bets = betSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
   
-      const potentialPayouts: { [key in BetTarget]: number } = {
-        green: 0, orange: 0, white: 0,
-        small: 0, big: 0,
-        0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0
-      };
+        const potentialPayouts: { [key in BetTarget | 'green' | 'orange' | 'white']: number } = {
+            green: 0, orange: 0, white: 0,
+            small: 0, big: 0,
+            0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0
+        };
+
+        bets.forEach(bet => {
+            let payout = 0;
+            if (bet.type === 'color') {
+                payout = bet.amount * (bet.target === 'white' ? 4.5 : 2);
+            } else if (bet.type === 'number') {
+                payout = bet.amount * 9;
+            } else if (bet.type === 'size') {
+                payout = bet.amount * 2;
+            }
+    
+            if (bet.type === 'number') {
+                const num = bet.target as number;
+                const color = getWinningColor(num);
+                potentialPayouts[num] += payout;
+                potentialPayouts[color] += payout;
+            } else if (bet.type === 'color') {
+                 potentialPayouts[bet.target as BetColor] += payout;
+            }
+        });
+
+        const colorPayouts = [
+            { color: 'green', payout: potentialPayouts.green },
+            { color: 'orange', payout: potentialPayouts.orange },
+            { color: 'white', payout: potentialPayouts.white },
+        ];
+        
+        colorPayouts.sort((a,b) => a.payout - b.payout);
+        const leastPayoutColor = colorPayouts[0].color as BetColor;
+
+        const possibleNumbers = {
+            green: [1, 3, 7, 9],
+            orange: [2, 4, 6, 8],
+            white: [0, 5],
+        }[leastPayoutColor];
+        
+        const winningNumber = possibleNumbers[Math.floor(Math.random() * possibleNumbers.length)];
+        const winningColor = getWinningColor(winningNumber);
+        const winningSize = getWinningSize(winningNumber);
   
-      bets.forEach(bet => {
-        let payout = 0;
-        if (bet.type === 'color') {
-            payout = bet.amount * (bet.target === 'white' ? 4.5 : 2);
-        } else if (bet.type === 'number') {
-            payout = bet.amount * 9;
-        } else if (bet.type === 'size') {
-            payout = bet.amount * 2;
+        const resultData: GameResult = {
+            id: currentRoundId,
+            roundId: currentRoundId,
+            winningNumber,
+            winningColor,
+            winningSize,
+            endedAt: serverTimestamp() as any,
+        };
+
+        setGameResult(resultData);
+    
+        const batch = writeBatch(firestore);
+        const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
+        batch.set(roundDocRef, resultData);
+  
+        const userPayouts: { [userId: string]: number } = {};
+
+        for (const bet of bets) {
+            const betDocRef = doc(firestore, 'bets', bet.id);
+            let hasWon = false;
+            let payout = 0;
+    
+            if (bet.type === 'number' && bet.target === winningNumber) {
+                hasWon = true;
+                payout = bet.amount * 9;
+            } else if (bet.type === 'color' && bet.target === winningColor) {
+                hasWon = true;
+                payout = bet.amount * (winningColor === 'white' ? 4.5 : 2);
+            } else if (bet.type === 'size' && bet.target === winningSize) {
+                hasWon = true;
+                payout = bet.amount * 2;
+            }
+    
+            batch.update(betDocRef, { status: hasWon ? 'win' : 'loss', payout });
+    
+            if (hasWon) {
+                if (!userPayouts[bet.userId]) {
+                    userPayouts[bet.userId] = 0;
+                }
+                userPayouts[bet.userId] += payout;
+            }
         }
 
-        if (bet.type === 'number') {
-            const num = bet.target as number;
-            potentialPayouts[num] += payout;
-            potentialPayouts[getWinningColor(num)] += payout;
-            potentialPayouts[getWinningSize(num)] += payout;
-        } else {
-            potentialPayouts[bet.target as BetColor | BetSize] += payout;
-        }
-      });
-  
-      const numberPayouts = Object.entries(potentialPayouts).slice(5).map(([key, value]) => ({num: parseInt(key), payout: value}));
-      
-      let sortedNumbers = numberPayouts.sort((a,b) => a.payout - b.payout);
+        await batch.commit();
 
-      // Add randomness to make it less predictable
-      const top3 = sortedNumbers.slice(0,3);
-      const randomIndex = Math.floor(Math.random() * top3.length);
-      const winningNumber = top3[randomIndex].num;
-      
-      const winningColor = getWinningColor(winningNumber);
-      const winningSize = getWinningSize(winningNumber);
-  
-      const resultData: GameResult = {
-        roundId: currentRoundId,
-        winningNumber,
-        winningColor,
-        winningSize,
-        endedAt: serverTimestamp() as any,
-      };
-
-      setGameResult(resultData);
-  
-      const batch = writeBatch(firestore);
-      const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
-      batch.set(roundDocRef, resultData);
-  
-      for (const bet of bets) {
-        const betDocRef = doc(firestore, 'bets', bet.id);
-        let hasWon = false;
-        let payout = 0;
-  
-        if (bet.type === 'number' && bet.target === winningNumber) {
-            hasWon = true;
-            payout = bet.amount * 9;
-        } else if (bet.type === 'color' && bet.target === winningColor) {
-            hasWon = true;
-            payout = bet.amount * (winningColor === 'white' ? 4.5 : 2);
-        } else if (bet.type === 'size' && bet.target === winningSize) {
-            hasWon = true;
-            payout = bet.amount * 2;
+        // Separate balance updates after batch commit
+        for (const userId in userPayouts) {
+            const userRef = doc(firestore, "users", userId);
+            try {
+                // Use increment for atomic update
+                await updateDoc(userRef, {
+                    balance: increment(userPayouts[userId])
+                });
+            } catch (e) {
+                 const contextualError = new FirestorePermissionError({
+                    path: userRef.path,
+                    operation: 'update',
+                    requestResourceData: { balance: `increment(${userPayouts[userId]})` },
+                 });
+                 errorEmitter.emit('permission-error', contextualError);
+                 console.error(`Failed to update balance for user ${userId}:`, e);
+                 toast({ variant: "destructive", title: "Balance Update Error", description: `Could not update balance for user ${userId}.` })
+            }
         }
-  
-        batch.update(betDocRef, { status: hasWon ? 'win' : 'loss', payout });
-  
-        if (hasWon) {
-          const userDocRef = doc(firestore, 'users', bet.userId);
-          batch.update(userDocRef, { balance: payout });
-        }
-      }
-      
-      await batch.commit();
 
     } catch (error) {
       console.error("Error in handleRoundEnd: ", error);
@@ -139,7 +174,7 @@ export function GameArea() {
     } finally {
       setIsProcessing(false);
     }
-  }, [firestore, currentRoundId, toast, handleNewRound]);
+  }, [firestore, currentRoundId, toast]);
 
   const renderResult = () => {
     if (!gameResult) return null
@@ -184,8 +219,8 @@ export function GameArea() {
           </div>
         </div>
 
-        {isProcessing || gameResult ? (
-          renderResult()
+        {isBettingLocked || isProcessing || gameResult ? (
+            renderResult()
         ) : (
           <div className="space-y-4 animate-in fade-in-20">
             <div className="grid grid-cols-3 gap-2">
@@ -214,7 +249,7 @@ export function GameArea() {
             <PastResultsTab />
           </TabsContent>
           <TabsContent value="myBets">
-            {user && <MyBetsTab userId={user.uid} />}
+            {user && <MyBetsTab userId={user.uid} key={currentRoundId} />}
           </TabsContent>
         </Tabs>
       </CardContent>

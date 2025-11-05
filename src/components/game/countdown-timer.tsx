@@ -1,12 +1,13 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
 
 // Duration in seconds for each phase
 const BETTING_DURATION = 40;
-const LOCKED_DURATION = 15;
-const RESULT_DURATION = 5;
-const TOTAL_DURATION = BETTING_DURATION + LOCKED_DURATION + RESULT_DURATION;
+const LOCKED_DURATION = 20; // Increased to make the "locked" phase more noticeable
+const RESULT_DURATION = 0; // Result phase removed, calculation happens at the end of locked phase
+const TOTAL_DURATION = BETTING_DURATION + LOCKED_DURATION;
 
 type GamePhase = "betting" | "locked" | "result";
 
@@ -29,47 +30,45 @@ export default function CountdownTimer({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [roundId]); // Reset interval when roundId changes
 
   useEffect(() => {
-    if (totalSeconds <= 0) {
+    // When timer hits 0, trigger new round logic and reset timer
+    if (totalSeconds === 0) {
       onNewRound();
       setTotalSeconds(TOTAL_DURATION);
+      setPhase('betting');
     }
   }, [totalSeconds, onNewRound]);
 
 
   useEffect(() => {
-    // Logic to determine the current phase and display time
-    if (totalSeconds > LOCKED_DURATION + RESULT_DURATION) {
+    // Logic to determine the current phase
+    if (totalSeconds > LOCKED_DURATION) {
       setPhase("betting");
-    } else if (totalSeconds > RESULT_DURATION) {
-      setPhase("locked");
-    } else {
-      if (phase !== "result") {
-         // When transitioning to the result phase, call onRoundEnd
-         // The actual result calculation will now happen in game-area.tsx
+    } else { // totalSeconds <= LOCKED_DURATION
+      if (phase === "betting") {
+         // This is the moment the betting phase ends and locked phase begins.
+         // Trigger the round end logic to calculate results immediately.
          onRoundEnd();
       }
-      setPhase("result");
+      setPhase("locked");
     }
-  }, [totalSeconds, onRoundEnd, phase, roundId]);
+  }, [totalSeconds, onRoundEnd, phase]);
 
 
   const getDisplayTime = () => {
     let secondsInPhase;
     switch(phase) {
       case 'betting':
-        secondsInPhase = totalSeconds - (LOCKED_DURATION + RESULT_DURATION);
+        secondsInPhase = totalSeconds - LOCKED_DURATION;
         break;
       case 'locked':
-        secondsInPhase = totalSeconds - RESULT_DURATION;
-        break;
-      case 'result':
         secondsInPhase = totalSeconds;
         break;
+      // Result phase is no longer displayed in the timer
       default:
-        secondsInPhase = 0;
+        secondsInPhase = totalSeconds;
     }
     const minutes = Math.floor(secondsInPhase / 60);
     const remainingSeconds = secondsInPhase % 60;
@@ -80,7 +79,6 @@ export default function CountdownTimer({
     switch(phase) {
         case 'betting': return "text-green-400";
         case 'locked': return "text-orange-400";
-        case 'result': return "text-red-500";
         default: return "text-white";
     }
   }

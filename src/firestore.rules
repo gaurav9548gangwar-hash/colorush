@@ -54,6 +54,8 @@ service cloud.firestore {
     match /users/{userId}/bets/{betId} {
       // A user can manage their own bets.
       allow create, update, delete, read: if isOwner(userId);
+      // Allow collection group queries on bets for the game logic.
+      allow list: if true;
     }
     
     // Legacy collections - block all client access

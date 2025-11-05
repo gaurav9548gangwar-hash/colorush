@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"
 import { useFirebase } from "@/firebase"
-import { doc, setDoc, serverTimestamp } from "firebase/firestore"
+import { doc, setDoc } from "firebase/firestore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { errorEmitter } from "@/firebase/error-emitter"
@@ -24,7 +24,7 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const router = useRouter()
-  const { auth, firestore, user, isUserLoading } = useFirebase() 
+  const { auth, firestore } = useFirebase() 
   const { toast } = useToast()
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -37,6 +37,8 @@ export default function LoginPage() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
       const newUser = userCredential.user
+      await userCredential.user.updateProfile({ displayName: name });
+
 
       const userData = {
         id: newUser.uid,
@@ -59,7 +61,7 @@ export default function LoginPage() {
         errorEmitter.emit('permission-error', contextualError);
       })
       
-      toast({ title: "Registration Successful", description: "Welcome! Please log in to continue." })
+      toast({ title: "Registration Successful", description: "Welcome! You are now logged in." })
       router.push("/dashboard");
     } catch (error: any) {
         if (error.code === 'auth/email-already-in-use') {

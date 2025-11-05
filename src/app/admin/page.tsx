@@ -13,7 +13,7 @@ import {
   orderBy,
   where,
   increment,
-  Timestamp,
+  type Timestamp,
 } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, DepositRequest, WithdrawalRequest } from '@/lib/types'
@@ -28,7 +28,6 @@ import { Label } from "@/components/ui/label"
 import { LogOut, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from '@/components/ui/badge'
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
 
@@ -142,7 +141,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
                 {isLoadingUsers && <p className="text-center py-4">Loading users...</p>}
-                {usersError && <p className="text-destructive text-center py-4">Error loading users: {usersError.message}. Check security rules.</p>}
+                {usersError && <p className="text-destructive text-center py-4">Error loading users. Check security rules and console.</p>}
                 {!isLoadingUsers && !usersError && (
                     <Table>
                         <TableHeader>
@@ -183,12 +182,14 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
 //                       DEPOSIT REQUESTS TAB
 // #####################################################################
 function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number, onUpdate: () => void }) {
-    const { firestore } = useFirebase();
+    const { firestore, auth } = useFirebase();
     const { toast } = useToast();
 
-    const depositsRef = useMemoFirebase(() => firestore 
-        ? query(collection(firestore, 'deposits'), where('status', '==', 'pending'), orderBy('createdAt', 'desc')) 
-        : null, [firestore, keyForRefresh]);
+    const depositsRef = useMemoFirebase(() => {
+      if (!firestore || !auth?.currentUser) return null;
+      return query(collection(firestore, 'deposits'), where('status', '==', 'pending'), orderBy('createdAt', 'desc'))
+    }, [firestore, auth, keyForRefresh]);
+
     const { data: deposits, isLoading, error } = useCollection<DepositRequest>(depositsRef);
 
     const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
@@ -230,7 +231,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
             <CardHeader><CardTitle>Pending Deposit Requests</CardTitle></CardHeader>
             <CardContent>
                 {isLoading && <p className="text-center py-4">Loading requests...</p>}
-                {error && <p className="text-destructive text-center py-4">Error: {error.message}.</p>}
+                {error && <p className="text-destructive text-center py-4">Error loading deposits. Check permissions.</p>}
                 {!isLoading && !error && (
                     <Table>
                         <TableHeader>
@@ -269,12 +270,14 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 //                     WITHDRAWAL REQUESTS TAB
 // #####################################################################
 function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number, onUpdate: () => void }) {
-    const { firestore } = useFirebase();
+    const { firestore, auth } = useFirebase();
     const { toast } = useToast();
 
-    const withdrawalsRef = useMemoFirebase(() => firestore 
-        ? query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'), orderBy('createdAt', 'desc')) 
-        : null, [firestore, keyForRefresh]);
+    const withdrawalsRef = useMemoFirebase(() => {
+      if (!firestore || !auth?.currentUser) return null;
+      return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'), orderBy('createdAt', 'desc'))
+    },[firestore, auth, keyForRefresh]);
+    
     const { data: withdrawals, isLoading, error } = useCollection<WithdrawalRequest>(withdrawalsRef);
     
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
@@ -326,7 +329,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
             <CardHeader><CardTitle>Pending Withdrawal Requests</CardTitle></CardHeader>
             <CardContent>
                 {isLoading && <p className="text-center py-4">Loading requests...</p>}
-                {error && <p className="text-destructive text-center py-4">Error: {error.message}.</p>}
+                {error && <p className="text-destructive text-center py-4">Error loading withdrawals. Check permissions.</p>}
                 {!isLoading && !error && (
                   <Table>
                       <TableHeader>

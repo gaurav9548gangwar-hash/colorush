@@ -34,9 +34,8 @@ import { errorEmitter } from "@/firebase/error-emitter";
 
 
 type BetSelection = {
-  color: "green" | "white" | "orange" | null;
-  number: number | null;
-  size: "big" | "small" | null;
+  type: 'color' | 'number' | null;
+  value: string | number | null;
 };
 
 type PlacedBetInfo = {
@@ -46,25 +45,10 @@ type PlacedBetInfo = {
     userId: string;
 }
 
-const numberButtonColors = [
-    'bg-red-500', 
-    'bg-green-500', 
-    'bg-blue-500', 
-    'bg-yellow-500', 
-    'bg-purple-500', 
-    'bg-pink-500', 
-    'bg-indigo-500', 
-    'bg-teal-500', 
-    'bg-lime-500', 
-    'bg-amber-500'
-];
-
-
 export default function GameArea() {
   const [selection, setSelection] = useState<BetSelection>({
-    color: null,
-    number: null,
-    size: null,
+    type: null,
+    value: null,
   });
   const [betAmount, setBetAmount] = useState(10);
   const [betsThisRound, setBetsThisRound] = useState<PlacedBetInfo[]>([]);
@@ -97,11 +81,11 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userBets } = useCollection<Bet>(userBetsRef);
 
-  const handleSelection = (type: keyof BetSelection, value: any) => {
-    setSelection(prev => ({ ...prev, [type]: value }));
+  const handleSelection = (type: 'color' | 'number', value: string | number) => {
+    setSelection({ type, value });
   };
 
-  const isBetReady = selection.color !== null && betAmount > 0;
+  const isBetReady = selection.type !== null && betAmount > 0;
 
   const handlePlaceBet = async () => {
     if (!user || !firestore || !userData) {
@@ -112,8 +96,8 @@ export default function GameArea() {
       toast({ variant: "destructive", title: "Betting Locked", description: "You cannot place bets at this time." });
       return;
     }
-    if (!selection.color) {
-       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color." });
+    if (!selection.type || selection.value === null) {
+       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color or number." });
        return;
     }
     if (userData.balance < betAmount) {
@@ -128,7 +112,7 @@ export default function GameArea() {
       }
 
       const newBetRef = doc(collection(firestore, `users/${user.uid}/bets`));
-      const betChoice = `color:${selection.color}`;
+      const betChoice = `${selection.type}:${selection.value}`;
 
       const betData = {
         userId: user.uid,
@@ -146,18 +130,18 @@ export default function GameArea() {
       setBetsThisRound(prev => [...prev, { id: newBetRef.id, amount: betAmount, choice: betChoice, userId: user.uid }]);
 
       toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
-      setSelection({ color: null, number: null, size: null });
+      setSelection({ type: null, value: null });
       setBetAmount(10);
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      if(userRef) await updateDoc(userRef, { balance: userData.balance });
+      if(userRef && userData) await updateDoc(userRef, { balance: userData.balance });
     }
   };
   
   const handleRoundEnd = async () => {
     if (!firestore || !currentRoundId) return;
-    setIsBettingLocked(true); // Lock betting as soon as round ends
+    setIsBettingLocked(true); 
 
     const allUsersBetsQuery = query(
         collectionGroup(firestore, 'bets'),
@@ -180,13 +164,15 @@ export default function GameArea() {
 
         let winningColor: 'green' | 'orange' | 'white';
         const colorTotals = { green: 0, orange: 0, white: 0 };
+        
+        const colorBets = allBetsInRound.filter(bet => bet.choice.startsWith('color:'));
 
-        if (allBetsInRound.length === 0) {
+        if (colorBets.length === 0) {
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         } else {
-            allBetsInRound.forEach(bet => {
-                const betColor = bet.choice.split(',').find(p => p.startsWith('color:'))?.split(':')[1] as keyof typeof colorTotals;
+            colorBets.forEach(bet => {
+                const betColor = bet.choice.split(':')[1] as keyof typeof colorTotals;
                 if (betColor && colorTotals.hasOwnProperty(betColor)) {
                     colorTotals[betColor] += bet.amount;
                 }
@@ -211,11 +197,13 @@ export default function GameArea() {
             }
             winningColor = tempWinningColor;
         }
+        
+        const winningNumber = Math.floor(Math.random() * 10);
 
         const result: GameResult = {
             id: currentRoundId,
             gameId: currentRoundId,
-            resultNumber: Math.floor(Math.random() * 10),
+            resultNumber: winningNumber,
             resultColor: winningColor,
             startTime: new Date().toISOString(),
             status: 'finished'
@@ -226,22 +214,25 @@ export default function GameArea() {
         const batch = writeBatch(firestore);
         let currentUserWon = false;
         let currentUserPayout = 0;
+        const userBalancesToUpdate: { [userId: string]: number } = {};
 
         for (const bet of allBetsInRound) {
-            const betColor = bet.choice.split(',').find(p => p.startsWith('color:'))?.split(':')[1];
+            const [betType, betValue] = bet.choice.split(':');
             const betDocRef = doc(firestore, 'users', bet.userId, 'bets', bet.id);
+            let payout = 0;
+            let didWin = false;
 
-            if (betColor === winningColor) {
-                const payout = bet.amount * 2;
+            if (betType === 'color' && betValue === winningColor) {
+                payout = bet.amount * 2;
+                didWin = true;
+            } else if (betType === 'number' && Number(betValue) === winningNumber) {
+                payout = bet.amount * 9;
+                didWin = true;
+            }
+
+            if(didWin) {
                 batch.update(betDocRef, { status: 'win', won: true, payout: payout });
-
-                const userToUpdateRef = doc(firestore, 'users', bet.userId);
-                // We need to get the user's current balance before updating in a batch
-                const userDoc = await getDoc(userToUpdateRef);
-                if (userDoc.exists()) {
-                    const currentBalance = userDoc.data().balance || 0;
-                    batch.update(userToUpdateRef, { balance: currentBalance + payout });
-                }
+                userBalancesToUpdate[bet.userId] = (userBalancesToUpdate[bet.userId] || 0) + payout;
 
                 if (bet.userId === user?.uid) {
                     currentUserWon = true;
@@ -252,12 +243,21 @@ export default function GameArea() {
             }
         }
 
+        for (const userId in userBalancesToUpdate) {
+            const userToUpdateRef = doc(firestore, 'users', userId);
+            const userDoc = await getDoc(userToUpdateRef);
+            if (userDoc.exists()) {
+                const currentBalance = userDoc.data().balance || 0;
+                batch.update(userToUpdateRef, { balance: currentBalance + userBalancesToUpdate[userId] });
+            }
+        }
+
         const gameRoundRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(gameRoundRef, result);
 
         await batch.commit();
 
-        if (betsThisRound.length > 0) {
+        if (betsThisRound.some(b => b.userId === user?.uid)) {
             if (currentUserWon) {
                 setShowResultEmoji('win');
                 toast({ title: "You Won!", description: `INR ${currentUserPayout.toFixed(2)} has been added to your wallet.` });
@@ -326,36 +326,53 @@ export default function GameArea() {
       <Card className="bg-background/30 border-primary/50">
         <CardHeader>
           <CardTitle>Place Your Bet</CardTitle>
-          <CardDescription>Select a color and amount.</CardDescription>
+          <CardDescription>Select a color OR a number, and an amount.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label className="text-base">1. Choose Color</Label>
+            <Label className="text-base">1. Choose Color (2x Payout)</Label>
             <div className="grid grid-cols-3 gap-2">
               <Button
-                variant={selection.color === 'green' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl bg-green-500 hover:bg-green-600 text-white", selection.color === 'green' && 'ring-2 ring-offset-2 ring-primary')}
+                variant={selection.type === 'color' && selection.value === 'green' ? 'default' : 'secondary'}
+                className={cn("h-16 text-xl bg-green-500 hover:bg-green-600 text-white", selection.type === 'color' && selection.value === 'green' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'green')}
                 disabled={isBettingLocked}
               >
                 Green
               </Button>
               <Button
-                variant={selection.color === 'white' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl bg-gray-200 text-black hover:bg-gray-300", selection.color === 'white' && 'ring-2 ring-offset-2 ring-primary')}
+                variant={selection.type === 'color' && selection.value === 'white' ? 'default' : 'secondary'}
+                className={cn("h-16 text-xl bg-gray-200 text-black hover:bg-gray-300", selection.type === 'color' && selection.value === 'white' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'white')}
                 disabled={isBettingLocked}
               >
                 White
               </Button>
               <Button
-                variant={selection.color === 'orange' ? 'default' : 'secondary'}
-                className={cn("h-16 text-xl bg-orange-500 hover:bg-orange-600 text-white", selection.color === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
+                variant={selection.type === 'color' && selection.value === 'orange' ? 'default' : 'secondary'}
+                className={cn("h-16 text-xl bg-orange-500 hover:bg-orange-600 text-white", selection.type === 'color' && selection.value === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'orange')}
                 disabled={isBettingLocked}
               >
                 Orange
               </Button>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label className="text-base">OR Choose Number (9x Payout)</Label>
+            <div className="grid grid-cols-5 gap-2">
+              {Array.from({ length: 10 }, (_, i) => i).map(num => (
+                <Button 
+                    key={num}
+                    variant={selection.type === 'number' && selection.value === num ? 'default' : 'secondary'}
+                    className={cn("h-12 text-lg", selection.type === 'number' && selection.value === num && 'ring-2 ring-offset-2 ring-primary')}
+                    onClick={() => handleSelection('number', num)}
+                    disabled={isBettingLocked}
+                >
+                    {num}
+                </Button>
+              ))}
             </div>
           </div>
 
@@ -410,7 +427,7 @@ export default function GameArea() {
               {userBets?.map((bet) => (
                 <TableRow key={bet.id}>
                   <TableCell className="text-xs">{bet.roundId}</TableCell>
-                  <TableCell className="text-xs">{bet.choice}</TableCell>
+                  <TableCell className="text-xs capitalize">{bet.choice.replace(':', ': ')}</TableCell>
                   <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={bet.status === 'win' ? 'default' : bet.status === 'loss' ? 'destructive' : 'secondary'}>
@@ -452,5 +469,7 @@ export default function GameArea() {
       </div>
     </section>
   );
+
+    
 
     

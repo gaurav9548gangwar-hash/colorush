@@ -31,11 +31,13 @@ export function GameArea() {
   const [isBettingLocked, setIsBettingLocked] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
+  const [currentRoundBets, setCurrentRoundBets] = useState<Bet[]>([]);
   
   const handleNewRound = useCallback(() => {
     setIsProcessing(false)
     setIsBettingLocked(false)
     setGameResult(null)
+    setCurrentRoundBets([])
     const newRoundId = new Date().getTime().toString();
     setCurrentRoundId(newRoundId)
   }, [])
@@ -44,18 +46,23 @@ export function GameArea() {
     handleNewRound()
   }, [handleNewRound])
 
+  const onBetPlaced = (bet: Omit<Bet, 'id' | 'createdAt'>) => {
+    const newBet = { ...bet, id: Math.random().toString(), createdAt: new Date() } as Bet;
+    setCurrentRoundBets(prevBets => [...prevBets, newBet]);
+  };
+
+
   const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
-  
+
     setIsBettingLocked(true);
     setIsProcessing(true);
-  
+
+    let resultData: GameResult;
+
     try {
-        const betsRef = collection(firestore, 'bets');
-        const q = query(betsRef, where('roundId', '==', currentRoundId));
-        const betSnapshot = await getDocs(q);
-        const bets = betSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
-  
+        const bets = currentRoundBets;
+        
         const potentialPayouts: { [key in BetTarget | 'green' | 'orange' | 'white']: number } = {
             green: 0, orange: 0, white: 0,
             small: 0, big: 0,
@@ -64,19 +71,21 @@ export function GameArea() {
 
         bets.forEach(bet => {
             let payout = 0;
+            const betNum = typeof bet.target === 'number' ? bet.target : -1;
+
             if (bet.type === 'color') {
                 payout = bet.amount * (bet.target === 'white' ? 4.5 : 2);
-                 const color = bet.target as BetColor;
-                 potentialPayouts[color] += payout;
+                const color = bet.target as BetColor;
+                potentialPayouts[color] += payout;
 
             } else if (bet.type === 'number') {
                 payout = bet.amount * 9;
-                const num = bet.target as number;
-                potentialPayouts[num] += payout;
+                potentialPayouts[betNum] += payout;
 
-                // Add number payout to its corresponding color
-                const colorOfNum = getWinningColor(num);
+                // Add to corresponding color total
+                const colorOfNum = getWinningColor(betNum);
                 potentialPayouts[colorOfNum] += payout;
+
 
             } else if (bet.type === 'size') {
                 payout = bet.amount * 2;
@@ -103,19 +112,27 @@ export function GameArea() {
         const winningColor = getWinningColor(winningNumber);
         const winningSize = getWinningSize(winningNumber);
   
-        const resultData: GameResult = {
+        resultData = {
             id: currentRoundId,
             roundId: currentRoundId,
             winningNumber,
             winningColor,
             winningSize,
-            endedAt: serverTimestamp() as any, // This will be set on the server
+            endedAt: serverTimestamp() as any,
         };
-
-        // Instantly display result on UI
+        
         setGameResult(resultData);
-    
-        // Update database in the background
+
+    } catch (error) {
+        console.error("Error calculating result: ", error);
+        toast({ variant: "destructive", title: "Result Error", description: "Could not calculate round results." });
+        setIsProcessing(false);
+        setIsBettingLocked(false); 
+        return; 
+    }
+
+
+    try {
         const batch = writeBatch(firestore);
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(roundDocRef, {
@@ -125,23 +142,32 @@ export function GameArea() {
   
         const userPayouts: { [userId: string]: number } = {};
 
-        for (const bet of bets) {
-            const betDocRef = doc(firestore, 'bets', bet.id);
+        for (const bet of currentRoundBets) {
+            // Since bets are from local state, their IDs are temporary. 
+            // We need to write them to the DB now.
+            const betDocRef = doc(collection(firestore, 'bets'));
             let hasWon = false;
             let payout = 0;
     
-            if (bet.type === 'number' && bet.target === winningNumber) {
+            if (bet.type === 'number' && bet.target === resultData.winningNumber) {
                 hasWon = true;
                 payout = bet.amount * 9;
-            } else if (bet.type === 'color' && bet.target === winningColor) {
+            } else if (bet.type === 'color' && bet.target === resultData.winningColor) {
                 hasWon = true;
-                payout = bet.amount * (winningColor === 'white' ? 4.5 : 2);
-            } else if (bet.type === 'size' && bet.target === winningSize) {
+                payout = bet.amount * (resultData.winningColor === 'white' ? 4.5 : 2);
+            } else if (bet.type === 'size' && bet.target === resultData.winningSize) {
                 hasWon = true;
                 payout = bet.amount * 2;
             }
     
-            batch.update(betDocRef, { status: hasWon ? 'win' : 'loss', payout });
+            // Write the full bet document to the batch
+            batch.set(betDocRef, {
+                ...bet,
+                id: betDocRef.id, // Use the new auto-generated ID
+                status: hasWon ? 'win' : 'loss',
+                payout,
+                createdAt: serverTimestamp(), // Set server timestamp on creation
+            });
     
             if (hasWon) {
                 if (!userPayouts[bet.userId]) {
@@ -150,10 +176,9 @@ export function GameArea() {
                 userPayouts[bet.userId] += payout;
             }
         }
-
+        
         await batch.commit();
 
-        // Separate balance updates for winners
         for (const userId in userPayouts) {
             if (userPayouts[userId] > 0) {
                  const userRef = doc(firestore, "users", userId);
@@ -175,12 +200,12 @@ export function GameArea() {
         }
 
     } catch (error) {
-      console.error("Error in handleRoundEnd: ", error);
-      toast({ variant: "destructive", title: "Round Error", description: "Could not process round results." });
+      console.error("Error saving round results: ", error);
+      toast({ variant: "destructive", title: "Round Error", description: "Could not save round results." });
     } finally {
         setIsProcessing(false);
     }
-  }, [firestore, currentRoundId, toast]);
+  }, [firestore, currentRoundId, toast, currentRoundBets]);
 
   const renderResult = () => {
     if (!gameResult) {
@@ -235,18 +260,18 @@ export function GameArea() {
         ) : (
           <div className="space-y-4 animate-in fade-in-20">
             <div className="grid grid-cols-3 gap-2">
-              <PlaceBetDialog type="color" target="green" roundId={currentRoundId} disabled={isBettingLocked} />
-              <PlaceBetDialog type="color" target="white" roundId={currentRoundId} disabled={isBettingLocked} />
-              <PlaceBetDialog type="color" target="orange" roundId={currentRoundId} disabled={isBettingLocked} />
+              <PlaceBetDialog onBetPlaced={onBetPlaced} type="color" target="green" roundId={currentRoundId} disabled={isBettingLocked} />
+              <PlaceBetDialog onBetPlaced={onBetPlaced} type="color" target="white" roundId={currentRoundId} disabled={isBettingLocked} />
+              <PlaceBetDialog onBetPlaced={onBetPlaced} type="color" target="orange" roundId={currentRoundId} disabled={isBettingLocked} />
             </div>
             <div className="grid grid-cols-5 gap-2">
               {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                <PlaceBetDialog key={num} type="number" target={num} roundId={currentRoundId} disabled={isBettingLocked} />
+                <PlaceBetDialog onBetPlaced={onBetPlaced} key={num} type="number" target={num} roundId={currentRoundId} disabled={isBettingLocked} />
               ))}
             </div>
             <div className="grid grid-cols-2 gap-2">
-                <PlaceBetDialog type="size" target="small" roundId={currentRoundId} disabled={isBettingLocked} />
-                <PlaceBetDialog type="size" target="big" roundId={currentRoundId} disabled={isBettingLocked} />
+                <PlaceBetDialog onBetPlaced={onBetPlaced} type="size" target="small" roundId={currentRoundId} disabled={isBettingLocked} />
+                <PlaceBetDialog onBetPlaced={onBetPlaced} type="size" target="big" roundId={currentRoundId} disabled={isBettingLocked} />
             </div>
           </div>
         )}

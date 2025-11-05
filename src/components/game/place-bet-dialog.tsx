@@ -14,9 +14,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useFirebase } from '@/firebase'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
-import type { BetColor, BetSize, BetTarget } from '@/lib/types'
+import type { Bet, BetColor, BetSize, BetTarget } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 interface PlaceBetDialogProps {
@@ -24,12 +23,13 @@ interface PlaceBetDialogProps {
   target: BetTarget
   roundId: string
   disabled: boolean
+  onBetPlaced: (bet: Omit<Bet, 'id' | 'createdAt'>) => void
 }
 
 const amountPresets = [10, 20, 50, 100]
 
-export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDialogProps) {
-  const { firestore, user } = useFirebase()
+export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }: PlaceBetDialogProps) {
+  const { user } = useFirebase()
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState(10)
@@ -46,26 +46,29 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
   }
 
   const handlePlaceBet = async () => {
-    if (!firestore || !user || !roundId || amount <= 0) {
-      toast({ variant: 'destructive', title: 'Invalid Bet', description: 'Please enter a valid amount.' })
+    if (!user || !roundId || amount <= 0) {
+      toast({ variant: 'destructive', title: 'Invalid Bet', description: 'Please log in and enter a valid amount.' })
       return
     }
     setIsSubmitting(true)
+    
+    const betData = {
+      userId: user.uid,
+      roundId,
+      amount,
+      target,
+      type,
+      status: 'pending',
+      payout: 0,
+    } as Omit<Bet, 'id' | 'createdAt'>
+
+    // This is now an optimistic update. The actual DB write happens at the end of the round.
     try {
-      await addDoc(collection(firestore, 'bets'), {
-        userId: user.uid,
-        roundId,
-        amount,
-        target,
-        type,
-        status: 'pending',
-        payout: 0,
-        createdAt: serverTimestamp(),
-      })
-      toast({ title: 'Bet Placed!', description: `You bet ₹${amount} on ${target}.` })
+      onBetPlaced(betData);
+      toast({ title: 'Bet Placed!', description: `You bet ₹${amount} on ${target}. Good luck!` })
       setOpen(false)
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Error Placing Bet', description: error.message })
+      toast({ variant: 'destructive', title: 'Error Placing Bet', description: 'Could not place bet locally.' })
     } finally {
       setIsSubmitting(false)
     }

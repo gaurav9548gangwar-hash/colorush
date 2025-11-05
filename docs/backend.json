@@ -33,6 +33,62 @@
         }
       },
       "required": ["id", "phone", "emailId", "balance", "createdAt"]
+    },
+     "DepositRequest": {
+      "title": "Deposit Request",
+      "type": "object",
+      "description": "Represents a user's request to deposit funds.",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "userName": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "transactionId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "userName", "amount", "transactionId", "status", "createdAt"]
+    },
+    "WithdrawalRequest": {
+      "title": "Withdrawal Request",
+      "type": "object",
+      "description": "Represents a user's request to withdraw funds.",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "userName": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "upiId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "userName", "amount", "upiId", "status", "createdAt"]
     }
   },
   "auth": {
@@ -42,6 +98,14 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "Stores user profiles. Path-based ownership ensures data privacy."
+    },
+    "/deposits/{depositId}": {
+      "schema": { "$ref": "#/entities/DepositRequest" },
+      "description": "Stores user deposit requests. Admins can manage these."
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": { "$ref": "#/entities/WithdrawalRequest" },
+      "description": "Stores user withdrawal requests. Admins can manage these."
     }
   }
 }

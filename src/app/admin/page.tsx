@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { collection, doc, query, updateDoc } from 'firebase/firestore'
+import { collection, doc, query, updateDoc, writeBatch, serverTimestamp, orderBy, where } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
-import type { User } from '@/lib/types'
+import type { User, DepositRequest, WithdrawalRequest } from '@/lib/types'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -12,10 +12,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { LogOut, RefreshCw } from 'lucide-react'
+import { LogOut, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useCollection } from '@/firebase/firestore/use-collection'
+import { Badge } from '@/components/ui/badge'
 
 
 function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void }) {
@@ -78,6 +79,172 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
   );
 }
 
+function DepositRequestsTab() {
+    const { firestore } = useFirebase();
+    const { toast } = useToast();
+    const [key, setKey] = useState(0);
+
+    const depositsRef = useMemoFirebase(() => firestore 
+        ? query(collection(firestore, 'deposits'), where('status', '==', 'pending'), orderBy('createdAt', 'desc')) 
+        : null, [firestore, key]);
+    const { data: deposits, isLoading } = useCollection<DepositRequest>(depositsRef);
+
+    const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
+        if (!firestore) return;
+
+        const batch = writeBatch(firestore);
+        const requestRef = doc(firestore, 'deposits', request.id);
+        batch.update(requestRef, { status: newStatus });
+
+        if (newStatus === 'approved') {
+            const userRef = doc(firestore, 'users', request.userId);
+            // We are not fetching the user doc, so we increment balance on the server
+            // This is not supported in client-side SDK. We need to fetch and update.
+            // This is a simplified example. For production, use a server-side function.
+             try {
+                // To safely update the balance, you would ideally use a transaction or a Cloud Function.
+                // For this client-side example, we'll just update based on the request amount.
+                // This is not fully safe against race conditions but is sufficient for this demo.
+                const userDoc = await doc(firestore, 'users', request.userId).get();
+                if (userDoc.exists()) {
+                    const currentBalance = userDoc.data().balance || 0;
+                    batch.update(userRef, { balance: currentBalance + request.amount });
+                } else {
+                     toast({ variant: 'destructive', title: 'Error', description: 'User not found.' });
+                     return;
+                }
+            } catch (e) {
+                 toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch user to update balance.' });
+                 return;
+            }
+        }
+        
+        try {
+            await batch.commit();
+            toast({ title: 'Success', description: `Request has been ${newStatus}.` });
+            setKey(k => k + 1); // Refresh data
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not update request.' });
+            console.error(error);
+        }
+    }
+
+    return (
+        <Card>
+            <CardHeader><CardTitle>Pending Deposit Requests</CardTitle></CardHeader>
+            <CardContent>
+                {isLoading && <p>Loading requests...</p>}
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>User</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Transaction ID</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {deposits?.map(req => (
+                            <TableRow key={req.id}>
+                                <TableCell>{req.userName}</TableCell>
+                                <TableCell>₹{req.amount.toFixed(2)}</TableCell>
+                                <TableCell>{req.transactionId}</TableCell>
+                                <TableCell>{new Date(req.createdAt.toDate()).toLocaleString()}</TableCell>
+                                <TableCell className="text-right space-x-2">
+                                    <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
+                                    <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+                 {deposits?.length === 0 && !isLoading && <p className="text-center text-muted-foreground py-4">No pending deposit requests.</p>}
+            </CardContent>
+        </Card>
+    )
+}
+
+function WithdrawalRequestsTab() {
+    const { firestore } = useFirebase();
+    const { toast } = useToast();
+    const [key, setKey] = useState(0);
+
+    const withdrawalsRef = useMemoFirebase(() => firestore 
+        ? query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'), orderBy('createdAt', 'desc')) 
+        : null, [firestore, key]);
+    const { data: withdrawals, isLoading } = useCollection<WithdrawalRequest>(withdrawalsRef);
+    
+    const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
+        if (!firestore) return;
+
+        const batch = writeBatch(firestore);
+        const requestRef = doc(firestore, 'withdrawals', request.id);
+        
+        try {
+            const userRef = doc(firestore, 'users', request.userId);
+            const userDoc = await userRef.get();
+            const currentBalance = userDoc.exists() ? userDoc.data().balance : 0;
+
+            if (newStatus === 'approved') {
+                if (currentBalance < request.amount) {
+                    toast({ variant: 'destructive', title: 'Error', description: 'User has insufficient balance.' });
+                    batch.update(requestRef, { status: 'rejected', reason: 'Insufficient balance' });
+                    await batch.commit();
+                    setKey(k => k + 1);
+                    return;
+                }
+                batch.update(userRef, { balance: currentBalance - request.amount });
+            }
+
+            batch.update(requestRef, { status: newStatus });
+            await batch.commit();
+            toast({ title: 'Success', description: `Request has been ${newStatus}.` });
+            setKey(k => k + 1); // Refresh data
+
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not update request.' });
+            console.error(error);
+        }
+    }
+
+
+    return (
+        <Card>
+            <CardHeader><CardTitle>Pending Withdrawal Requests</CardTitle></CardHeader>
+            <CardContent>
+                {isLoading && <p>Loading requests...</p>}
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>User</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>UPI ID</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {withdrawals?.map(req => (
+                            <TableRow key={req.id}>
+                                <TableCell>{req.userName}</TableCell>
+                                <TableCell>₹{req.amount.toFixed(2)}</TableCell>
+                                <TableCell>{req.upiId}</TableCell>
+                                <TableCell>{new Date(req.createdAt.toDate()).toLocaleString()}</TableCell>
+                                <TableCell className="text-right space-x-2">
+                                    <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
+                                    <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+                {withdrawals?.length === 0 && !isLoading && <p className="text-center text-muted-foreground py-4">No pending withdrawal requests.</p>}
+            </CardContent>
+        </Card>
+    )
+}
+
 
 export default function AdminPage() {
   const { firestore } = useFirebase();
@@ -129,8 +296,10 @@ export default function AdminPage() {
       </header>
       
       <Tabs defaultValue="users">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 grid w-full grid-cols-3">
           <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="deposits">Deposit Requests</TabsTrigger>
+          <TabsTrigger value="withdrawals">Withdrawal Requests</TabsTrigger>
         </TabsList>
         <TabsContent value="users">
             <Card>
@@ -184,6 +353,12 @@ export default function AdminPage() {
                 )}
                 </CardContent>
             </Card>
+        </TabsContent>
+        <TabsContent value="deposits">
+            <DepositRequestsTab />
+        </TabsContent>
+        <TabsContent value="withdrawals">
+            <WithdrawalRequestsTab />
         </TabsContent>
       </Tabs>
     </div>

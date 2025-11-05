@@ -26,9 +26,30 @@ export interface Bet {
 }
 
 export interface GameResult {
+  id: string;
   roundId: string;
   winningNumber: number;
   winningColor: BetColor;
   winningSize: BetSize;
   endedAt: Timestamp;
+}
+
+export interface DepositRequest {
+    id: string;
+    userId: string;
+    userName: string;
+    amount: number;
+    transactionId: string;
+    status: 'pending' | 'approved' | 'rejected';
+    createdAt: Timestamp;
+}
+
+export interface WithdrawalRequest {
+    id: string;
+    userId: string;
+    userName: string;
+    amount: number;
+    upiId: string;
+    status: 'pending' | 'approved' | 'rejected';
+    createdAt: Timestamp;
 }

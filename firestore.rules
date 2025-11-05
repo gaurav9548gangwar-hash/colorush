@@ -33,13 +33,13 @@ service cloud.firestore {
     }
     
     match /bets/{betId} {
-      // Game logic can read all bets for a round.
-      allow read: if request.auth != null;
       // Users can create their own bets.
       allow create: if request.auth.uid == request.resource.data.userId;
-      // Users cannot update or delete bets. Game logic updates them.
-      allow update: if request.auth != null;
-      allow delete: if false;
+      // Users can list their own bets for the 'My Bets' table.
+      // Game logic can read all bets for a round via a trusted server/admin SDK.
+      allow list: if request.auth != null && request.query.where[0][2] == request.auth.uid;
+      // Users cannot read, update or delete bets directly. Game logic updates them.
+      allow read, update, delete: if false;
     }
 
     // Legacy collections - block all client access

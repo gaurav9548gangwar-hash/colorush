@@ -7,7 +7,7 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
-export function initializeFirebase(): { firebaseApp: FirebaseApp; auth: Auth; firestore: Firestore, storage: FirebaseStorage } {
+export function initializeFirebase(): { firebaseApp: FirebaseApp; auth: Auth; firestore: Firestore; storage: FirebaseStorage } {
   if (getApps().length > 0) {
     const app = getApp();
     return {

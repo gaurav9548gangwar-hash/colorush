@@ -47,14 +47,15 @@ export default function LoginPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
       const user = userCredential.user
 
-      await setDoc(doc(firestore, "users", user.uid), {
+      const userData = {
         id: user.uid,
         name: name,
         phone: phone,
         emailId: emailId,
         balance: 0,
         createdAt: new Date().toISOString()
-      })
+      };
+      await setDoc(doc(firestore, "users", user.uid), userData)
       
       localStorage.setItem("tirangaUserPhone", phone)
       setIsRegistered(true);
@@ -76,10 +77,11 @@ export default function LoginPage() {
     
     try {
         await signInWithEmailAndPassword(auth, emailId, password)
+        localStorage.setItem("tirangaUserPhone", phone)
         toast({ title: "Login Successful" })
         router.push("/dashboard")
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Login Failed", description: "Invalid password." })
+        toast({ variant: "destructive", title: "Login Failed", description: "Invalid phone number or password." })
     } finally {
         setIsSubmitting(false)
     }
@@ -89,7 +91,7 @@ export default function LoginPage() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold text-primary">App</CardTitle>
+        <CardTitle className="text-2xl font-bold text-primary">Tiranga Wingo</CardTitle>
         <CardDescription>{isRegistered ? "Welcome back! Please log in." : "Create your account"}</CardDescription>
       </CardHeader>
       <CardContent>
@@ -122,11 +124,11 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" type="tel" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+                    <Input id="phone" type="tel" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} required pattern="\d{10}" title="Phone number must be 10 digits"/>
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
-                    <Input id="password" type="password" placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                    <Input id="password" type="password" placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}/>
                 </div>
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
                     {isSubmitting ? "Creating Account..." : "Create Account"}
@@ -135,18 +137,22 @@ export default function LoginPage() {
         )}
       </CardContent>
        <CardFooter className="flex flex-col text-xs text-center">
-        {isRegistered && (
+        {isRegistered ? (
              <Button variant="link" size="sm" onClick={() => {
                 localStorage.removeItem("tirangaUserPhone");
                 setIsRegistered(false);
                 setPhone("");
                 setPassword("");
             }}>
-                Register with a new number?
+                Not your account? Register here.
+            </Button>
+        ) : (
+            <Button variant="link" size="sm" onClick={() => setIsRegistered(true)}>
+                Already have an account? Login.
             </Button>
         )}
-        <p className="mt-2">By continuing, you agree to our Terms of Service.</p>
-        <Button variant="link" size="sm" onClick={() => router.push('/admin/login')}>
+        <p className="mt-2 text-muted-foreground">By continuing, you agree to our Terms of Service.</p>
+        <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-2">
             Admin Login
         </Button>
       </CardFooter>

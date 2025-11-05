@@ -469,7 +469,3 @@ export default function GameArea() {
       </div>
     </section>
   );
-
-    
-
-    

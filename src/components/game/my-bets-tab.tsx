@@ -20,7 +20,7 @@ export default function MyBetsTab() {
         : null,
     [firestore, user]
   );
-  const { data: myBets, isLoading, error } = useCollection<Bet>(betsQuery);
+  const { data: myBets, isLoading, error, manualRefresh } = useCollection<Bet>(betsQuery);
   
   const sortedBets = useMemo(() => {
     if (!myBets) return [];
@@ -50,7 +50,7 @@ export default function MyBetsTab() {
     <div className="space-y-2">
          <div className="flex justify-between items-center">
             <h3 className="font-bold">My Bet History</h3>
-            <Button variant="ghost" size="icon" disabled={isLoading}><RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} /></Button>
+            <Button variant="ghost" size="icon" onClick={manualRefresh} disabled={isLoading}><RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} /></Button>
         </div>
         {isLoading && <p className="text-center">Loading my bets...</p>}
         {error && <p className="text-center text-destructive">Could not load bet history. Please check permissions.</p>}

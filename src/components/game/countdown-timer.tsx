@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 const BETTING_DURATION = 45; // 45 seconds for betting
 const LOCKED_DURATION = 15;  // 15 seconds for result calculation
@@ -29,35 +28,25 @@ export default function CountdownTimer({
 
   // Main countdown interval logic
   useEffect(() => {
-    // If time is up, trigger a new round and stop the timer
     if (secondsLeft <= 0) {
       onNewRound();
       return;
     }
 
     const intervalId = setInterval(() => {
-      setSecondsLeft((prevSeconds) => {
-          const newSeconds = prevSeconds - 1;
-          
-          // Check if it's time to lock the betting
-          if (newSeconds === LOCKED_DURATION && phase === "betting") {
-              setPhase("locked");
-          }
-
-          return newSeconds;
-      });
+      setSecondsLeft((prevSeconds) => prevSeconds - 1);
     }, 1000);
 
-    // Cleanup interval on component unmount or when secondsLeft changes
     return () => clearInterval(intervalId);
-  }, [secondsLeft, phase, onNewRound]);
+  }, [secondsLeft, onNewRound]);
   
-  // Safely trigger onRoundEnd when the phase changes to 'locked'
+  // Effect to manage phase transitions and trigger round end
   useEffect(() => {
-    if (phase === "locked" && secondsLeft === LOCKED_DURATION) {
-      onRoundEnd();
+    if (secondsLeft <= LOCKED_DURATION && phase === "betting") {
+      setPhase("locked");
+      onRoundEnd(); 
     }
-  }, [phase, secondsLeft, onRoundEnd]);
+  }, [secondsLeft, phase, onRoundEnd]);
 
 
   const getDisplayTime = () => {

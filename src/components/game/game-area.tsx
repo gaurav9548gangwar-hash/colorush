@@ -109,23 +109,21 @@ export default function GameArea() {
     }
   };
   
-  const handleRoundEnd = useCallback(async () => {
+ const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
 
     setIsBettingLocked(true);
     setIsProcessing(true);
 
     try {
-        // 1. Fetch all active bets for the current round.
         const allBetsInRoundQuery = query(
-            collection(firestore, 'bets'), 
-            where('roundId', '==', currentRoundId), 
+            collection(firestore, 'bets'),
+            where('roundId', '==', currentRoundId),
             where('status', '==', 'active')
         );
         const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
         const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
         
-        // 2. Calculate potential payouts to determine the winning color.
         const colorTotals = { green: 0, orange: 0, white: 0 };
         const numberColorMap: { [key: number]: 'green' | 'orange' | 'white' } = {
           1: 'green', 3: 'green', 7: 'green', 9: 'green',
@@ -150,45 +148,35 @@ export default function GameArea() {
             }
         });
 
-
-        // Determine the color with the minimum potential payout.
         let winningColor: 'green' | 'orange' | 'white';
         if (activeBets.length > 0) {
             const minPayout = Math.min(colorTotals.green, colorTotals.orange, colorTotals.white);
             const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minPayout);
             winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
         } else {
-            // If no bets, pick a random color.
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         }
 
-        // 3. Determine other winning attributes.
         const winningNumber = Math.floor(Math.random() * 10);
         const winningSize = winningNumber >= 5 ? 'big' : 'small';
 
-        // 4. Create the final result object.
         const resultData: GameResult = {
             id: currentRoundId,
             gameId: currentRoundId,
-            resultNumber,
+            resultNumber: winningNumber,
             resultColor: winningColor,
             resultSize: winningSize,
             startTime: new Date().toISOString(),
             status: 'finished'
         };
         
-        // 5. Set result for UI display IMMEDIATELY.
-        setGameResult(resultData); 
+        setGameResult(resultData);
 
-        // 6. Create a single atomic batch to update everything in the database.
         const batch = writeBatch(firestore);
-
-        // 6a. Add the round result to the batch.
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(roundDocRef, resultData);
         
-        // 6b. Process each bet and update user balances in the batch.
         const userPayouts: { [userId: string]: number } = {};
 
         for (const bet of activeBets) {
@@ -209,24 +197,19 @@ export default function GameArea() {
             }
         }
         
-        // 6c. Fetch user balances and add balance updates to the batch.
         const userIdsToUpdate = Object.keys(userPayouts);
         if (userIdsToUpdate.length > 0) {
-            const userRefsToFetch = userIdsToUpdate.map(uid => doc(firestore, 'users', uid));
-            const userDocs = await Promise.all(userRefsToFetch.map(ref => getDoc(ref)));
-
-            userDocs.forEach(userDoc => {
+            for (const uid of userIdsToUpdate) {
+                const userRefToUpdate = doc(firestore, 'users', uid);
+                const userDoc = await getDoc(userRefToUpdate);
                 if (userDoc.exists()) {
-                    const uid = userDoc.id;
-                    const userRefToUpdate = doc(firestore, 'users', uid);
                     const currentBalance = userDoc.data().balance || 0;
                     const totalPayout = userPayouts[uid];
                     batch.update(userRefToUpdate, { balance: currentBalance + totalPayout });
                 }
-            });
+            }
         }
         
-        // 7. Commit the entire batch at once.
         await batch.commit();
 
     } catch (error) {

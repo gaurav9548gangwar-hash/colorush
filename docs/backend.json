@@ -126,9 +126,9 @@
       "schema": { "$ref": "#/entities/Withdrawal" },
       "description": "Centralized collection for all user withdrawal requests. Admins have access, users can only create."
     },
-    "/users/{userId}/bets/{betId}": {
+    "/bets/{betId}": {
       "schema": { "$ref": "#/entities/Bet" },
-      "description": "Stores bets placed by users. Path-based ownership restricts access."
+      "description": "Centralized, top-level collection for all bets from all users."
     },
     "/roles_admin/{adminId}": {
       "schema": { "$ref": "#/entities/Admin" },

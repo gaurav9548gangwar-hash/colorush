@@ -25,7 +25,7 @@ import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase";
-import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, collectionGroup, setDoc, Timestamp } from "firebase/firestore";
+import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, collectionGroup, setDoc, Timestamp, addDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -73,10 +73,12 @@ export default function GameArea() {
   const { data: pastResults } = useCollection<GameResult>(gameRoundsRef);
   
   const userBetsRef = useMemoFirebase(() => {
-    if (!user || !firestore || !currentRoundId) return null;
-    return query(collection(firestore, 'users', user.uid, 'bets'), orderBy('createdAt', 'desc'), limit(10));
-  }, [user, firestore, currentRoundId]);
+    if (!user || !firestore) return null;
+    // Query the top-level 'bets' collection
+    return query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
+  }, [user, firestore]);
   const { data: userBets } = useCollection<Bet>(userBetsRef);
+
 
   const handleSelection = (type: 'color' | 'number', value: string | number) => {
     if(isBettingLocked) return;
@@ -108,8 +110,9 @@ export default function GameArea() {
       if (userRef) {
         await updateDoc(userRef, { balance: newBalance });
       }
-
-      const newBetRef = doc(collection(firestore, `users/${user.uid}/bets`));
+      
+      // Use the top-level 'bets' collection
+      const newBetRef = collection(firestore, `bets`);
       const betChoice = `${selection.type}:${selection.value}`;
 
       const betData: Omit<Bet, 'id'> = {
@@ -123,7 +126,7 @@ export default function GameArea() {
         won: false,
       };
 
-      await setDoc(newBetRef, betData);
+      await addDoc(newBetRef, betData);
 
       toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
       setSelection({ type: null, value: null });
@@ -141,7 +144,7 @@ export default function GameArea() {
     
     try {
         const allBetsQuery = query(
-            collectionGroup(firestore, 'bets'),
+            collection(firestore, 'bets'),
             where('roundId', '==', currentRoundId)
         );
         const allBetsSnapshot = await getDocs(allBetsQuery);
@@ -191,7 +194,7 @@ export default function GameArea() {
         const userBalancesToUpdate: { [userId: string]: number } = {};
 
         for (const bet of allBetsData) {
-            const betDocRef = doc(firestore, 'users', bet.userId, 'bets', bet.id);
+            const betDocRef = doc(firestore, 'bets', bet.id);
             const [betType, betValue] = bet.choice.split(':');
             let didWin = false;
             let payout = 0;
@@ -244,7 +247,7 @@ export default function GameArea() {
 
     } catch(serverError: any) {
         const permissionError = new FirestorePermissionError({
-            path: `bets (collectionGroup)`,
+            path: `bets`,
             operation: 'list',
         });
         errorEmitter.emit('permission-error', permissionError);

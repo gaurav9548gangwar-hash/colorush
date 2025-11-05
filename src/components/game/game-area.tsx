@@ -126,13 +126,30 @@ export default function GameArea() {
         const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
         
         // 2. Calculate potential payouts to determine the winning color.
-        const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
+        const colorTotals = { green: 0, orange: 0, white: 0 };
+        const numberColorMap: { [key: number]: 'green' | 'orange' | 'white' } = {
+          1: 'green', 3: 'green', 7: 'green', 9: 'green',
+          2: 'orange', 4: 'orange', 6: 'orange', 8: 'orange',
+          0: 'white', 5: 'white',
+        };
+
         activeBets.forEach(bet => {
-            if (bet.choice.startsWith('color:')) {
-                const color = bet.choice.split(':')[1];
-                if (color in colorTotals) colorTotals[color] += bet.amount * 2; // Simplified payout for color bets
+            const [type, value] = bet.choice.split(':');
+            const betAmount = bet.amount;
+
+            if (type === 'color') {
+                if (value === 'green') colorTotals.green += betAmount * 2;
+                if (value === 'orange') colorTotals.orange += betAmount * 2;
+                if (value === 'white') colorTotals.white += betAmount * 2;
+            } else if (type === 'number') {
+                const num = parseInt(value);
+                const colorOfNumber = numberColorMap[num];
+                if (colorOfNumber) {
+                    colorTotals[colorOfNumber] += betAmount * 9;
+                }
             }
         });
+
 
         // Determine the color with the minimum potential payout.
         let winningColor: 'green' | 'orange' | 'white';

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useCollection, useFirebase, useMemoFirebase } from "@/firebase";
-import { collection, query, where, orderBy, limit } from "firebase/firestore";
+import { collection, query, where, orderBy } from "firebase/firestore";
 import type { Bet } from "@/lib/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ export default function MyBetsTab() {
   const betsQuery = useMemoFirebase(
     () =>
       firestore && user
-        ? query(collection(firestore, "bets"), where("userId", "==", user.uid), orderBy("createdAt", "desc"), limit(20))
+        ? query(collection(firestore, "bets"), where("userId", "==", user.uid), orderBy("createdAt", "desc"))
         : null,
     [firestore, user]
   );
@@ -33,7 +33,7 @@ export default function MyBetsTab() {
   return (
     <div className="space-y-2">
          <div className="flex justify-between items-center">
-            <h3 className="font-bold">My Bet History (Last 20)</h3>
+            <h3 className="font-bold">My Bet History</h3>
             <Button variant="ghost" size="icon" disabled={isLoading}><RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} /></Button>
         </div>
         {isLoading && <p className="text-center">Loading my bets...</p>}

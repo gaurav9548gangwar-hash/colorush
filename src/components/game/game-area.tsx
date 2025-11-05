@@ -84,18 +84,17 @@ export default function GameArea() {
       
       const betChoice = `${selection.type}:${selection.value}`;
 
-      const betData: Omit<Bet, 'id'> = {
+      const betData: Omit<Bet, 'id' | 'createdAt'> = {
         userId: user.uid,
         roundId: currentRoundId,
         choice: betChoice,
         amount: totalBetAmount,
         status: 'active',
-        createdAt: Timestamp.now(),
         payout: 0,
         won: false,
       };
 
-      await addDoc(collection(firestore, 'bets'), betData);
+      await addDoc(collection(firestore, 'bets'), { ...betData, createdAt: Timestamp.now() });
 
       toast({ title: "Bet Placed!", description: `INR ${totalBetAmount.toFixed(2)} on ${betChoice}.` });
       setSelection({ type: null, value: null });
@@ -107,6 +106,15 @@ export default function GameArea() {
     }
   };
   
+  const handleNewRound = useCallback(() => {
+    setIsBettingLocked(false);
+    setGameResult(null);
+    setSelection({ type: null, value: null });
+    setMultiplier(1);
+    setCurrentRoundId(`round_${new Date().getTime()}`);
+    setIsProcessing(false);
+  }, []);
+
   const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
 
@@ -143,6 +151,7 @@ export default function GameArea() {
           const num = parseInt(value);
           const colorOfNumber = numberColorMap[num];
           if (colorOfNumber) {
+            // Add payout to the corresponding color
             colorPayouts[colorOfNumber] += amount * 9;
           }
         }
@@ -153,8 +162,10 @@ export default function GameArea() {
       if (activeBets.length > 0) {
         const minPayout = Math.min(colorPayouts.green, colorPayouts.orange, colorPayouts.white);
         const winningColors = (Object.keys(colorPayouts) as ('green' | 'orange' | 'white')[]).filter(c => colorPayouts[c] === minPayout);
+        // Add some randomness if there's a tie or to make it less predictable
         winningColor = winningColors[Math.floor(Math.random() * winningColors.length)];
       } else {
+        // If no bets, pick a random color
         winningColor = (['green', 'orange', 'white'] as const)[Math.floor(Math.random() * 3)];
       }
 
@@ -228,16 +239,7 @@ export default function GameArea() {
     } finally {
       setIsProcessing(false);
     }
-  }, [firestore, currentRoundId, toast]);
-  
-  const handleNewRound = useCallback(() => {
-    setIsBettingLocked(false);
-    setGameResult(null);
-    setSelection({ type: null, value: null });
-    setMultiplier(1);
-    setCurrentRoundId(`round_${new Date().getTime()}`);
-    setIsProcessing(false);
-  }, []);
+  }, [firestore, currentRoundId, toast, handleNewRound]);
   
   const numberToColorClass = (num: number) => {
     if ([1,3,7,9].includes(num)) return 'bg-green-500 text-white';

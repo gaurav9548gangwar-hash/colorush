@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ArrowLeft } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { errorEmitter } from '@/firebase/error-emitter'
+import { FirestorePermissionError } from '@/firebase/errors'
 
 const UPI_ID = 'colourtrest99955@ptyes'
 const MIN_DEPOSIT = 200
@@ -55,29 +57,40 @@ export default function RechargePage() {
     }
 
     setIsSubmitting(true);
-    try {
-        await addDoc(collection(firestore, 'deposits'), {
-            userId: user.uid,
-            userName: user.displayName || 'N/A',
-            amount: Number(amount),
-            transactionId,
-            status: 'pending',
-            createdAt: serverTimestamp(),
-        })
+
+    const depositData = {
+        userId: user.uid,
+        userName: user.displayName || 'N/A',
+        amount: Number(amount),
+        transactionId,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+    };
+
+    addDoc(collection(firestore, 'deposits'), depositData)
+      .then(() => {
         toast({
             title: 'Request Submitted',
             description: 'Your deposit request has been sent for verification. It will be processed shortly.'
-        })
-        router.push('/dashboard')
-    } catch (error: any) {
+        });
+        router.push('/dashboard');
+      })
+      .catch((error) => {
+        const contextualError = new FirestorePermissionError({
+          path: 'deposits',
+          operation: 'create',
+          requestResourceData: depositData,
+        });
+        errorEmitter.emit('permission-error', contextualError);
         toast({
             variant: 'destructive',
             title: 'Submission Failed',
-            description: error.message
+            description: "Check console for details."
         })
-    } finally {
+      })
+      .finally(() => {
         setIsSubmitting(false)
-    }
+      });
   }
 
   return (

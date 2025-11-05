@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { collection, doc, query, updateDoc, writeBatch, serverTimestamp, orderBy, where } from 'firebase/firestore'
+import { collection, doc, query, updateDoc, writeBatch, getDoc, orderBy, where, getDocs } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, DepositRequest, WithdrawalRequest } from '@/lib/types'
 
@@ -16,7 +16,8 @@ import { LogOut, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useCollection } from '@/firebase/firestore/use-collection'
-import { Badge } from '@/components/ui/badge'
+import { errorEmitter } from '@/firebase/error-emitter'
+import { FirestorePermissionError } from '@/firebase/errors'
 
 
 function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void }) {
@@ -25,7 +26,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
   const { firestore } = useFirebase();
   const { toast } = useToast();
 
-  const handleBalanceUpdate = async (operation: 'add' | 'deduct') => {
+  const handleBalanceUpdate = (operation: 'add' | 'deduct') => {
     if (!firestore || !user || isNaN(amount) || amount <= 0) {
       toast({ variant: "destructive", title: "Invalid Amount", description: "Please enter a valid amount > 0" });
       return;
@@ -40,16 +41,23 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
       return;
     }
 
-    try {
-      await updateDoc(userRef, { balance: newBalance });
-      toast({ title: "Success", description: `Balance for ${user.name} updated to INR ${newBalance.toFixed(2)}` });
-      setOpen(false);
-      setAmount(0);
-      onUpdate(); // Trigger refresh
-    } catch (error) {
-      console.error("Failed to update balance:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to update balance. Check Firestore rules." });
-    }
+    const balanceData = { balance: newBalance };
+    updateDoc(userRef, balanceData)
+      .then(() => {
+        toast({ title: "Success", description: `Balance for ${user.name} updated to INR ${newBalance.toFixed(2)}` });
+        setOpen(false);
+        setAmount(0);
+        onUpdate(); // Trigger refresh
+      })
+      .catch((error) => {
+        const contextualError = new FirestorePermissionError({
+          path: userRef.path,
+          operation: 'update',
+          requestResourceData: balanceData,
+        });
+        errorEmitter.emit('permission-error', contextualError);
+        toast({ variant: "destructive", title: "Error", description: "Failed to update balance. Check permissions." });
+      });
   };
 
   return (
@@ -98,14 +106,8 @@ function DepositRequestsTab() {
 
         if (newStatus === 'approved') {
             const userRef = doc(firestore, 'users', request.userId);
-            // We are not fetching the user doc, so we increment balance on the server
-            // This is not supported in client-side SDK. We need to fetch and update.
-            // This is a simplified example. For production, use a server-side function.
              try {
-                // To safely update the balance, you would ideally use a transaction or a Cloud Function.
-                // For this client-side example, we'll just update based on the request amount.
-                // This is not fully safe against race conditions but is sufficient for this demo.
-                const userDoc = await doc(firestore, 'users', request.userId).get();
+                const userDoc = await getDoc(userRef);
                 if (userDoc.exists()) {
                     const currentBalance = userDoc.data().balance || 0;
                     batch.update(userRef, { balance: currentBalance + request.amount });
@@ -114,19 +116,30 @@ function DepositRequestsTab() {
                      return;
                 }
             } catch (e) {
+                 const contextualError = new FirestorePermissionError({
+                    path: userRef.path,
+                    operation: 'get',
+                 });
+                 errorEmitter.emit('permission-error', contextualError);
                  toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch user to update balance.' });
                  return;
             }
         }
         
-        try {
-            await batch.commit();
-            toast({ title: 'Success', description: `Request has been ${newStatus}.` });
-            setKey(k => k + 1); // Refresh data
-        } catch (error) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not update request.' });
-            console.error(error);
-        }
+        batch.commit()
+            .then(() => {
+                toast({ title: 'Success', description: `Request has been ${newStatus}.` });
+                setKey(k => k + 1); // Refresh data
+            })
+            .catch((error) => {
+                const contextualError = new FirestorePermissionError({
+                    path: requestRef.path,
+                    operation: 'update',
+                    requestResourceData: { status: newStatus },
+                });
+                errorEmitter.emit('permission-error', contextualError);
+                toast({ variant: 'destructive', title: 'Error', description: 'Could not update request.' });
+            });
     }
 
     return (
@@ -183,7 +196,7 @@ function WithdrawalRequestsTab() {
         
         try {
             const userRef = doc(firestore, 'users', request.userId);
-            const userDoc = await userRef.get();
+            const userDoc = await getDoc(userRef);
             const currentBalance = userDoc.exists() ? userDoc.data().balance : 0;
 
             if (newStatus === 'approved') {
@@ -198,13 +211,29 @@ function WithdrawalRequestsTab() {
             }
 
             batch.update(requestRef, { status: newStatus });
-            await batch.commit();
-            toast({ title: 'Success', description: `Request has been ${newStatus}.` });
-            setKey(k => k + 1); // Refresh data
+            
+            batch.commit()
+                .then(() => {
+                    toast({ title: 'Success', description: `Request has been ${newStatus}.` });
+                    setKey(k => k + 1); // Refresh data
+                })
+                .catch((error) => {
+                     const contextualError = new FirestorePermissionError({
+                        path: requestRef.path,
+                        operation: 'update',
+                        requestResourceData: { status: newStatus },
+                     });
+                     errorEmitter.emit('permission-error', contextualError);
+                     toast({ variant: 'destructive', title: 'Error', description: 'Could not update request.' });
+                });
 
         } catch (error) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not update request.' });
-            console.error(error);
+            const contextualError = new FirestorePermissionError({
+                path: doc(firestore, 'users', request.userId).path,
+                operation: 'get',
+            });
+            errorEmitter.emit('permission-error', contextualError);
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch user to process request.' });
         }
     }
 

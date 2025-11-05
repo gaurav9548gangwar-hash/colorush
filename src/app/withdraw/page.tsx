@@ -13,6 +13,8 @@ import { ArrowLeft } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useDoc } from '@/firebase/firestore/use-doc'
 import type { User } from '@/lib/types'
+import { errorEmitter } from '@/firebase/error-emitter'
+import { FirestorePermissionError } from '@/firebase/errors'
 
 const MIN_WITHDRAWAL = 500
 
@@ -72,29 +74,39 @@ export default function WithdrawPage() {
     }
 
     setIsSubmitting(true);
-    try {
-        await addDoc(collection(firestore, 'withdrawals'), {
-            userId: user.uid,
-            userName: userData.name || 'N/A',
-            amount: Number(amount),
-            upiId,
-            status: 'pending',
-            createdAt: serverTimestamp(),
+    const withdrawalData = {
+        userId: user.uid,
+        userName: userData.name || 'N/A',
+        amount: Number(amount),
+        upiId,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+    };
+
+    addDoc(collection(firestore, 'withdrawals'), withdrawalData)
+        .then(() => {
+            toast({
+                title: 'Request Submitted',
+                description: 'Your withdrawal request has been sent. It will be processed by our team shortly.'
+            });
+            router.push('/dashboard');
         })
-        toast({
-            title: 'Request Submitted',
-            description: 'Your withdrawal request has been sent. It will be processed by our team shortly.'
+        .catch((error) => {
+            const contextualError = new FirestorePermissionError({
+                path: 'withdrawals',
+                operation: 'create',
+                requestResourceData: withdrawalData,
+            });
+            errorEmitter.emit('permission-error', contextualError);
+            toast({
+                variant: 'destructive',
+                title: 'Submission Failed',
+                description: "Check console for details."
+            });
         })
-        router.push('/dashboard')
-    } catch (error: any) {
-        toast({
-            variant: 'destructive',
-            title: 'Submission Failed',
-            description: error.message
-        })
-    } finally {
-        setIsSubmitting(false)
-    }
+        .finally(() => {
+            setIsSubmitting(false);
+        });
   }
 
    if (isUserLoading || isUserDocLoading) {

@@ -8,7 +8,7 @@ import { CountdownTimer } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
 import { useFirebase } from '@/firebase'
 import type { Bet, BetColor, BetSize, BetTarget, GameResult } from '@/lib/types'
-import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp, updateDoc, increment } from 'firebase/firestore'
+import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
 import { PastResultsTab } from './past-results-tab'
 import { MyBetsTab } from './my-bets-tab'
@@ -31,7 +31,7 @@ export function GameArea() {
   const [isBettingLocked, setIsBettingLocked] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
-  const [currentRoundBets, setCurrentRoundBets] = useState<Bet[]>([]);
+  const [currentRoundBets, setCurrentRoundBets] = useState<Omit<Bet, 'id' | 'createdAt'>[]>([]);
   
   const handleNewRound = useCallback(() => {
     setIsProcessing(false)
@@ -47,10 +47,8 @@ export function GameArea() {
   }, [handleNewRound])
 
   const onBetPlaced = (bet: Omit<Bet, 'id' | 'createdAt'>) => {
-    const newBet = { ...bet, id: Math.random().toString(), createdAt: new Date() } as Bet;
-    setCurrentRoundBets(prevBets => [...prevBets, newBet]);
+    setCurrentRoundBets(prevBets => [...prevBets, bet]);
   };
-
 
   const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
@@ -59,34 +57,28 @@ export function GameArea() {
     setIsProcessing(true);
 
     let resultData: GameResult;
+    let betsToProcess = [...currentRoundBets]; // Create a copy of the bets for processing
 
     try {
-        const bets = currentRoundBets;
-        
         const potentialPayouts: { [key in BetTarget | 'green' | 'orange' | 'white']: number } = {
             green: 0, orange: 0, white: 0,
             small: 0, big: 0,
             0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0
         };
 
-        bets.forEach(bet => {
+        betsToProcess.forEach(bet => {
             let payout = 0;
             const betNum = typeof bet.target === 'number' ? bet.target : -1;
 
             if (bet.type === 'color') {
-                payout = bet.amount * (bet.target === 'white' ? 4.5 : 2);
                 const color = bet.target as BetColor;
+                payout = bet.amount * (color === 'white' ? 4.5 : 2);
                 potentialPayouts[color] += payout;
-
-            } else if (bet.type === 'number') {
+            } else if (bet.type === 'number' && betNum !== -1) {
                 payout = bet.amount * 9;
                 potentialPayouts[betNum] += payout;
-
-                // Add to corresponding color total
                 const colorOfNum = getWinningColor(betNum);
                 potentialPayouts[colorOfNum] += payout;
-
-
             } else if (bet.type === 'size') {
                 payout = bet.amount * 2;
                 potentialPayouts[bet.target as BetSize] += payout;
@@ -118,7 +110,7 @@ export function GameArea() {
             winningNumber,
             winningColor,
             winningSize,
-            endedAt: serverTimestamp() as any,
+            endedAt: new Date(), // Use JS Date for UI, will be converted to server timestamp for DB
         };
         
         setGameResult(resultData);
@@ -127,24 +119,21 @@ export function GameArea() {
         console.error("Error calculating result: ", error);
         toast({ variant: "destructive", title: "Result Error", description: "Could not calculate round results." });
         setIsProcessing(false);
-        setIsBettingLocked(false); 
         return; 
     }
 
-
+    // --- Start background processing for saving data ---
     try {
         const batch = writeBatch(firestore);
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(roundDocRef, {
             ...resultData,
-            endedAt: serverTimestamp() // ensure timestamp is set for db
+            endedAt: serverTimestamp() // Use server timestamp for DB
         });
   
         const userPayouts: { [userId: string]: number } = {};
 
-        for (const bet of currentRoundBets) {
-            // Since bets are from local state, their IDs are temporary. 
-            // We need to write them to the DB now.
+        for (const bet of betsToProcess) {
             const betDocRef = doc(collection(firestore, 'bets'));
             let hasWon = false;
             let payout = 0;
@@ -160,29 +149,29 @@ export function GameArea() {
                 payout = bet.amount * 2;
             }
     
-            // Write the full bet document to the batch
             batch.set(betDocRef, {
                 ...bet,
-                id: betDocRef.id, // Use the new auto-generated ID
+                id: betDocRef.id,
                 status: hasWon ? 'win' : 'loss',
                 payout,
-                createdAt: serverTimestamp(), // Set server timestamp on creation
+                createdAt: serverTimestamp(), // Use server timestamp for consistency
             });
     
             if (hasWon) {
-                if (!userPayouts[bet.userId]) {
-                    userPayouts[bet.userId] = 0;
-                }
-                userPayouts[bet.userId] += payout;
+                userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
             }
         }
         
+        // Payouts must be done separately from the main batch
+        // because we can't read (to get current balance) and write in the same batch.
         await batch.commit();
 
+        // After batch is committed, update user balances
         for (const userId in userPayouts) {
             if (userPayouts[userId] > 0) {
                  const userRef = doc(firestore, "users", userId);
                  try {
+                     // Use increment for atomic and safe balance updates
                      await updateDoc(userRef, {
                          balance: increment(userPayouts[userId])
                      });
@@ -200,8 +189,8 @@ export function GameArea() {
         }
 
     } catch (error) {
-      console.error("Error saving round results: ", error);
-      toast({ variant: "destructive", title: "Round Error", description: "Could not save round results." });
+      console.error("Error saving round results to DB: ", error);
+      toast({ variant: "destructive", title: "Save Error", description: "Could not save round results." });
     } finally {
         setIsProcessing(false);
     }
@@ -276,7 +265,7 @@ export function GameArea() {
           </div>
         )}
 
-        <Tabs defaultValue="pastResults" className="mt-6">
+        <Tabs defaultValue="myBets" className="mt-6">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="pastResults">Past Results</TabsTrigger>
             <TabsTrigger value="myBets">My Bet History</TabsTrigger>

@@ -45,7 +45,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
     return 'secondary'
   }
 
-  const handlePlaceBet = async () => {
+  const handlePlaceBet = () => {
     if (!user || !roundId || amount <= 0) {
       toast({ variant: 'destructive', title: 'Invalid Bet', description: 'Please log in and enter a valid amount.' })
       return
@@ -62,7 +62,6 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
       payout: 0,
     } as Omit<Bet, 'id' | 'createdAt'>
 
-    // This is now an optimistic update. The actual DB write happens at the end of the round.
     try {
       onBetPlaced(betData);
       toast({ title: 'Bet Placed!', description: `You bet ₹${amount} on ${target}. Good luck!` })

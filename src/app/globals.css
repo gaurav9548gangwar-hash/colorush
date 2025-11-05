@@ -71,3 +71,14 @@
 .countdown-box {
     @apply bg-gray-200 text-black p-2 rounded-md font-mono text-xl;
 }
+
+/* Remove default styles for Radix Tabs */
+[data-state="active"] {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+}
+
+[role="tab"] {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+}

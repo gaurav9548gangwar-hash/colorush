@@ -1,27 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "../ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
 import { Badge } from "../ui/badge";
-import {
-  Card,
-  CardContent,
-} from "../ui/card";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { collection, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, Timestamp, addDoc, onSnapshot, Unsubscribe } from "firebase/firestore";
+import { collection, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, Timestamp, addDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { List } from "lucide-react";
+import { useCollection } from "@/firebase/firestore/use-collection";
+
 
 type BetSelection = {
   type: 'color' | 'number' | 'size' | null;
@@ -33,16 +22,13 @@ export default function GameArea() {
   const [betAmount, setBetAmount] = useState(10);
   const [multiplier, setMultiplier] = useState(1);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
-  const [gameResult, setGameResult] = useState<GameResult | null>(null);
-  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
   
-  const [pastResults, setPastResults] = useState<GameResult[]>([]);
-  const [myBets, setMyBets] = useState<Bet[]>([]);
+  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
 
-  useEffect(() => {
+   useEffect(() => {
     // Generate the initial round ID only on the client side to avoid hydration errors
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
@@ -53,45 +39,27 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
-  // Real-time listener for past game results (last 10)
-  useEffect(() => {
-    if (!firestore) return;
-    const q = query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const results = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as GameResult));
-      setPastResults(results);
-    });
-    return () => unsubscribe();
-  }, [firestore]);
-
-  // Real-time listener for the current user's bets
-  useEffect(() => {
-    if (!firestore || !user) {
-        setMyBets([]);
-        return;
-    };
-    
-    const q = query(collection(firestore, 'bets'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(10));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        const bets = snapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
-        setMyBets(bets);
-    });
-
-    return () => unsubscribe();
-  }, [firestore, user]);
+  const isBetReady = selection.type !== null && (betAmount * multiplier) > 0;
 
   const handleSelection = (type: 'color' | 'number' | 'size', value: string | number) => {
     if (isBettingLocked) return;
-    setSelection({ type, value });
+    // If same selection is clicked again, deselect it
+    if (selection.type === type && selection.value === value) {
+        setSelection({ type: null, value: null });
+    } else {
+        setSelection({ type, value });
+    }
   };
   
   const handleMultiplier = (m: number) => {
     if (isBettingLocked) return;
-    setMultiplier(m);
+     if (multiplier === m) {
+      setMultiplier(1); // Deselect if same multiplier is clicked
+    } else {
+      setMultiplier(m);
+    }
   }
 
-  const isBetReady = selection.type !== null && (betAmount * multiplier) > 0;
 
   const handlePlaceBet = async () => {
     const totalBetAmount = betAmount * multiplier;
@@ -133,11 +101,13 @@ export default function GameArea() {
 
       toast({ title: "Bet Placed!", description: `INR ${totalBetAmount.toFixed(2)} on ${betChoice}.` });
       setSelection({ type: null, value: null });
+      setMultiplier(1);
       
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
       if (userRef && userData) {
+        // Revert balance if bet placement fails
         updateDoc(userRef, { balance: userData.balance });
       }
     }
@@ -174,7 +144,7 @@ export default function GameArea() {
       const winningSize = winningNumber >= 5 ? 'big' : 'small';
       
       const resultData: GameResult = { id: currentRoundId, gameId: currentRoundId, resultNumber, resultColor: winningColor, resultSize: winningSize, startTime: new Date().toISOString(), status: 'finished' };
-      setGameResult(resultData);
+     
 
       const batch = writeBatch(firestore);
       const userPayouts: { [userId: string]: number } = {};
@@ -199,7 +169,7 @@ export default function GameArea() {
       batch.set(doc(firestore, 'game_rounds', currentRoundId), resultData);
       await batch.commit();
 
-      // Update user balances after batch commit
+      // Update user balances after batch commit with error handling
       if (Object.keys(userPayouts).length > 0) {
         const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
           const userToUpdateRef = doc(firestore, 'users', uid);
@@ -218,9 +188,9 @@ export default function GameArea() {
   }, [firestore, currentRoundId, user, toast]);
   
   const handleNewRound = useCallback(() => {
-    setGameResult(null);
     setIsBettingLocked(false);
     setSelection({ type: null, value: null });
+    setMultiplier(1);
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
   
@@ -234,33 +204,20 @@ export default function GameArea() {
   if (!currentRoundId) return <div className="text-center p-4">Initializing Game...</div>;
 
   return (
-    <section className="space-y-4 relative">
-      <Card className="bg-primary/20">
-        <CardContent className="p-2">
-            <div className="flex justify-between items-center">
-                <Button variant="ghost" size="sm" className="text-xs"><List className="mr-1 h-3 w-3" /> How to play</Button>
-                <div className="text-right">
-                    <p className="text-xs text-gray-400">Time remaining</p>
-                    <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} roundId={currentRoundId} />
-                </div>
-            </div>
-            <div className="flex items-center justify-between mt-2 px-2">
-                <p className="text-sm">Win Go 1Min</p>
-                <p className="text-sm font-mono">{currentRoundId}</p>
-            </div>
-            <div className="flex space-x-2 p-2 overflow-x-auto">
-                {pastResults.slice(0, 5).map(r => (
-                    <div key={r.id} className={cn("flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center font-bold text-white", numberToColor(r.resultNumber))}>
-                        {r.resultNumber}
-                    </div>
-                ))}
-            </div>
-        </CardContent>
-      </Card>
+    <div className="space-y-4">
+      <div className="flex justify-between items-center bg-card p-2 rounded-lg">
+          <div>
+            <p className="text-sm text-gray-400">Win Go 1 Min</p>
+            <p className="text-lg font-bold">{currentRoundId}</p>
+          </div>
+          <div className="text-right">
+             <p className="text-sm text-gray-400">Time Remaining</p>
+            <CountdownTimer onRoundEnd={handleRoundEnd} onNewRound={handleNewRound} roundId={currentRoundId} />
+          </div>
+      </div>
       
 
-      <Card className="bg-background/30 border-primary/50">
-        <CardContent className="p-2 space-y-4">
+      <div className="bg-card p-4 rounded-lg space-y-4">
           <div className="grid grid-cols-3 gap-2">
             <Button
               variant={selection.type === 'color' && selection.value === 'green' ? 'default' : 'green'}
@@ -293,22 +250,25 @@ export default function GameArea() {
             ))}
           </div>
           
-          <div className="grid grid-cols-5 gap-2">
-             {['Random', 'X1', 'X5', 'X10', 'X20', 'X50', 'X100', 'Big', 'Small'].map((item) => {
-                 if(item.startsWith('X')) {
-                    const m = parseInt(item.substring(1));
-                    return <Button key={item} variant={multiplier === m ? 'default' : 'secondary'} onClick={() => handleMultiplier(m)} disabled={isBettingLocked}>{item}</Button>
-                 }
-                 if(item === 'Big' || item === 'Small') {
-                    return <Button key={item} variant={selection.value === item.toLowerCase() ? 'default' : 'secondary'} className="col-span-2 h-12" onClick={() => handleSelection('size', item.toLowerCase())} disabled={isBettingLocked}>{item}</Button>
-                 }
-                 // Random button
-                 return <Button key={item} variant='secondary' disabled={isBettingLocked}>Random</Button>
-             })}
+          <div className="grid grid-cols-2 gap-2">
+              <Button size="lg" variant={selection.value === 'big' ? 'default' : 'secondary'} onClick={() => handleSelection('size', 'big')} disabled={isBettingLocked}>Big</Button>
+              <Button size="lg" variant={selection.value === 'small' ? 'default' : 'secondary'} onClick={() => handleSelection('size', 'small')} disabled={isBettingLocked}>Small</Button>
           </div>
 
-        </CardContent>
-      </Card>
-    </section>
+          <div className="flex items-center gap-2">
+              <input type="number" value={betAmount} onChange={e => setBetAmount(Number(e.target.value))} className="w-20 bg-input rounded-md p-2 text-center" />
+              <div className="grid grid-cols-4 gap-2 flex-grow">
+                  {[1, 5, 10, 20].map(m => (
+                      <Button key={m} variant={multiplier === m ? 'default' : 'secondary'} onClick={() => handleMultiplier(m)}>X{m}</Button>
+                  ))}
+              </div>
+          </div>
+
+          <Button className="w-full h-12" onClick={handlePlaceBet} disabled={!isBetReady || isBettingLocked}>
+              Bet (Total: INR {(betAmount * multiplier).toFixed(2)})
+          </Button>
+
+        </div>
+    </div>
   );
 }

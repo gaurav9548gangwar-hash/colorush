@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useFirebase } from '@/firebase'
 import { useToast } from '@/hooks/use-toast'
-import type { Bet, BetColor, BetTarget } from '@/lib/types'
+import type { Bet, BetColor, BetSize, BetTarget } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { doc, increment, updateDoc } from 'firebase/firestore'
 import { FirestorePermissionError } from '@/firebase/errors'
@@ -44,6 +44,17 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
       if (color === 'green') return 'green'
       if (color === 'orange') return 'orange'
       if (color === 'white') return 'white'
+    }
+     if (type === 'number') {
+        const num = target as number;
+        if ([0, 5].includes(num)) return 'white';
+        if ([1, 3, 7, 9].includes(num)) return 'green';
+        if ([2, 4, 6, 8].includes(num)) return 'orange';
+    }
+    if (type === 'size') {
+        const size = target as BetSize;
+        if (size === 'small') return 'blue';
+        if (size === 'big') return 'yellow';
     }
     return 'secondary'
   }
@@ -95,7 +106,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant={getButtonVariant()} disabled={disabled} className="w-full h-12 text-lg font-bold">
-          {String(target)}
+          {type === 'number' ? `${target}x` : String(target)}
         </Button>
       </DialogTrigger>
       <DialogContent>

@@ -27,12 +27,6 @@ export default function LoginPage() {
   const { auth, firestore, user, isUserLoading } = useFirebase() 
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (!isUserLoading && user) {
-        router.push("/dashboard");
-    }
-  }, [user, isUserLoading, router]);
-
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!auth || !firestore) return
@@ -55,10 +49,18 @@ export default function LoginPage() {
       
       // Save the user data to Firestore
       const userDocRef = doc(firestore, "users", newUser.uid);
-      await setDoc(userDocRef, userData);
       
-      toast({ title: "Registration Successful", description: "Welcome! Your account has been created." })
-      // Don't need to push, useEffect will handle it
+      setDoc(userDocRef, userData).catch(error => {
+         const contextualError = new FirestorePermissionError({
+            path: userDocRef.path,
+            operation: 'create',
+            requestResourceData: userData,
+        });
+        errorEmitter.emit('permission-error', contextualError);
+      })
+      
+      toast({ title: "Registration Successful", description: "Welcome! Please log in to continue." })
+      router.push("/dashboard");
     } catch (error: any) {
         if (error.code === 'auth/email-already-in-use') {
             toast({ variant: "destructive", title: "Registration Failed", description: "This phone number is already registered. Please log in." })
@@ -79,17 +81,12 @@ export default function LoginPage() {
     try {
         await signInWithEmailAndPassword(auth, emailId, loginPassword)
         toast({ title: "Login Successful" })
-        // Don't need to push, useEffect will handle it
+        router.push("/dashboard");
     } catch (error: any) {
         toast({ variant: "destructive", title: "Login Failed", description: "Invalid phone number or password." })
     } finally {
         setIsSubmitting(false)
     }
-  }
-
-  // Render a loading state while checking for existing user
-  if (isUserLoading || user) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
 
   return (

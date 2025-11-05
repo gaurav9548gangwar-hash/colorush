@@ -27,12 +27,18 @@ service cloud.firestore {
       
       // A user can delete their own profile.
       allow delete: if isOwner(userId);
+      
+      // Admin can list all users.
+      allow list: if isAdmin();
     }
 
     match /deposits/{depositId} {
-      // An admin can read all deposit requests (list and get).
-      allow read: if isAdmin();
+      // Admin can list pending deposit requests.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
       
+      // An admin or the owner can get a specific deposit request.
+      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
+
       // A user can create their own deposit request.
       allow create: if request.auth.uid == request.resource.data.userId;
       
@@ -44,9 +50,12 @@ service cloud.firestore {
     }
 
      match /withdrawals/{withdrawalId} {
-      // An admin can read all withdrawal requests (list and get).
-      allow read: if isAdmin();
+      // Admin can list pending withdrawal requests.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
       
+      // An admin or the owner can get a specific withdrawal request.
+      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
+
       // A user can create their own withdrawal request.
       allow create: if request.auth.uid == request.resource.data.userId;
       

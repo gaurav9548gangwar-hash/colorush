@@ -2,14 +2,13 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
 import { collection, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, Timestamp, addDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useCollection } from "@/firebase/firestore/use-collection";
+import { Loader2 } from "lucide-react";
 
 
 type BetSelection = {
@@ -24,6 +23,8 @@ export default function GameArea() {
   const [isBettingLocked, setIsBettingLocked] = useState(false);
   
   const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
+  const [gameResult, setGameResult] = useState<GameResult | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
@@ -43,7 +44,6 @@ export default function GameArea() {
 
   const handleSelection = (type: 'color' | 'number' | 'size', value: string | number) => {
     if (isBettingLocked) return;
-    // If same selection is clicked again, deselect it
     if (selection.type === type && selection.value === value) {
         setSelection({ type: null, value: null });
     } else {
@@ -54,12 +54,11 @@ export default function GameArea() {
   const handleMultiplier = (m: number) => {
     if (isBettingLocked) return;
      if (multiplier === m) {
-      setMultiplier(1); // Deselect if same multiplier is clicked
+      setMultiplier(1);
     } else {
       setMultiplier(m);
     }
   }
-
 
   const handlePlaceBet = async () => {
     const totalBetAmount = betAmount * multiplier;
@@ -107,7 +106,6 @@ export default function GameArea() {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
       if (userRef && userData) {
-        // Revert balance if bet placement fails
         updateDoc(userRef, { balance: userData.balance });
       }
     }
@@ -116,13 +114,13 @@ export default function GameArea() {
   const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
     setIsBettingLocked(true);
+    setIsProcessing(true);
 
     try {
       const allBetsInRoundQuery = query(collection(firestore, 'bets'), where('roundId', '==', currentRoundId), where('status', '==', 'active'));
       const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
       const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
 
-      // Smart logic to determine winning color (minimum potential payout)
       const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
       activeBets.forEach(bet => {
         if (bet.choice.startsWith('color:')) {
@@ -130,10 +128,11 @@ export default function GameArea() {
           if (color in colorTotals) colorTotals[color] += bet.amount * 2;
         }
       });
+
       let winningColor: 'green' | 'orange' | 'white' = 'green';
       if (activeBets.length > 0) {
-        const minBet = Math.min(...Object.values(colorTotals));
-        const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minBet);
+        const minPayout = Math.min(...Object.values(colorTotals));
+        const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minPayout);
         winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
       } else {
          const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
@@ -144,7 +143,7 @@ export default function GameArea() {
       const winningSize = winningNumber >= 5 ? 'big' : 'small';
       
       const resultData: GameResult = { id: currentRoundId, gameId: currentRoundId, resultNumber, resultColor: winningColor, resultSize: winningSize, startTime: new Date().toISOString(), status: 'finished' };
-     
+      setGameResult(resultData);
 
       const batch = writeBatch(firestore);
       const userPayouts: { [userId: string]: number } = {};
@@ -169,7 +168,6 @@ export default function GameArea() {
       batch.set(doc(firestore, 'game_rounds', currentRoundId), resultData);
       await batch.commit();
 
-      // Update user balances after batch commit with error handling
       if (Object.keys(userPayouts).length > 0) {
         const userUpdatePromises = Object.keys(userPayouts).map(async (uid) => {
           const userToUpdateRef = doc(firestore, 'users', uid);
@@ -184,19 +182,25 @@ export default function GameArea() {
         });
         await Promise.allSettled(userUpdatePromises);
       }
-    } catch(error) { console.error("Error in handleRoundEnd: ", error); }
+    } catch(error) { 
+        console.error("Error in handleRoundEnd: ", error); 
+        toast({ variant: "destructive", title: "Round Error", description: "Could not process round results." });
+    } finally {
+        setIsProcessing(false);
+    }
   }, [firestore, currentRoundId, user, toast]);
   
   const handleNewRound = useCallback(() => {
     setIsBettingLocked(false);
+    setGameResult(null);
     setSelection({ type: null, value: null });
     setMultiplier(1);
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
   
-  const numberToColor = (num: number) => {
-    if ([1,3,7,9].includes(num)) return 'bg-green-500';
-    if ([2,4,6,8].includes(num)) return 'bg-orange-500';
+  const numberToColorClass = (num: number) => {
+    if ([1,3,7,9].includes(num)) return 'bg-green-500 text-white';
+    if ([2,4,6,8].includes(num)) return 'bg-orange-500 text-white';
     if ([0,5].includes(num)) return 'bg-white text-purple-700 border-2 border-purple-500';
     return 'bg-gray-500';
   }
@@ -208,7 +212,7 @@ export default function GameArea() {
       <div className="flex justify-between items-center bg-card p-2 rounded-lg">
           <div>
             <p className="text-sm text-gray-400">Win Go 1 Min</p>
-            <p className="text-lg font-bold">{currentRoundId}</p>
+            <p className="text-lg font-bold">{currentRoundId.slice(-6)}</p>
           </div>
           <div className="text-right">
              <p className="text-sm text-gray-400">Time Remaining</p>
@@ -216,22 +220,42 @@ export default function GameArea() {
           </div>
       </div>
       
+      {isBettingLocked && (
+        <div className="bg-card p-4 rounded-lg text-center">
+            {isProcessing ? (
+                <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Calculating result...</span>
+                </div>
+            ) : gameResult ? (
+                 <div className="flex flex-col items-center gap-2">
+                    <p className="text-lg font-bold">Winner: {gameResult.resultNumber}</p>
+                    <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-lg font-bold", numberToColorClass(gameResult.resultNumber))}>
+                        {gameResult.resultNumber}
+                    </div>
+                    <p className="capitalize">({gameResult.resultColor}, {gameResult.resultSize})</p>
+                </div>
+            ) : (
+                <p>Waiting for the next round...</p>
+            )}
+        </div>
+      )}
 
-      <div className="bg-card p-4 rounded-lg space-y-4">
+      <div className={cn("bg-card p-4 rounded-lg space-y-4", isBettingLocked && 'opacity-50 pointer-events-none')}>
           <div className="grid grid-cols-3 gap-2">
             <Button
               variant={selection.type === 'color' && selection.value === 'green' ? 'default' : 'green'}
-              onClick={() => handleSelection('color', 'green')} disabled={isBettingLocked} >
+              onClick={() => handleSelection('color', 'green')} >
               Green
             </Button>
             <Button
               variant={selection.type === 'color' && selection.value === 'white' ? 'default' : 'white'}
-              onClick={() => handleSelection('color', 'white')} disabled={isBettingLocked}>
+              onClick={() => handleSelection('color', 'white')}>
               White
             </Button>
             <Button
               variant={selection.type === 'color' && selection.value === 'orange' ? 'default' : 'orange'}
-              onClick={() => handleSelection('color', 'orange')} disabled={isBettingLocked}>
+              onClick={() => handleSelection('color', 'orange')}>
               Orange
             </Button>
           </div>
@@ -242,17 +266,16 @@ export default function GameArea() {
                   key={num}
                   variant='secondary'
                   size="circle"
-                  className={cn("h-12 w-12 text-lg", numberToColor(num), selection.type === 'number' && selection.value === num && 'ring-2 ring-offset-2 ring-primary')}
-                  onClick={() => handleSelection('number', num)}
-                  disabled={isBettingLocked}>
+                  className={cn("h-12 w-12 text-lg", numberToColorClass(num), selection.type === 'number' && selection.value === num && 'ring-2 ring-offset-2 ring-primary')}
+                  onClick={() => handleSelection('number', num)}>
                   {num}
               </Button>
             ))}
           </div>
           
           <div className="grid grid-cols-2 gap-2">
-              <Button size="lg" variant={selection.value === 'big' ? 'default' : 'secondary'} onClick={() => handleSelection('size', 'big')} disabled={isBettingLocked}>Big</Button>
-              <Button size="lg" variant={selection.value === 'small' ? 'default' : 'secondary'} onClick={() => handleSelection('size', 'small')} disabled={isBettingLocked}>Small</Button>
+              <Button size="lg" variant={selection.value === 'big' ? 'default' : 'secondary'} onClick={() => handleSelection('size', 'big')}>Big</Button>
+              <Button size="lg" variant={selection.value === 'small' ? 'default' : 'secondary'} onClick={() => handleSelection('size', 'small')}>Small</Button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -264,10 +287,9 @@ export default function GameArea() {
               </div>
           </div>
 
-          <Button className="w-full h-12" onClick={handlePlaceBet} disabled={!isBetReady || isBettingLocked}>
+          <Button className="w-full h-12" onClick={handlePlaceBet} disabled={!isBetReady}>
               Bet (Total: INR {(betAmount * multiplier).toFixed(2)})
           </Button>
-
         </div>
     </div>
   );

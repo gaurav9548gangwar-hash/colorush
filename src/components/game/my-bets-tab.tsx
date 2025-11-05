@@ -33,19 +33,19 @@ export default function MyBetsTab() {
   return (
     <div className="space-y-2">
          <div className="flex justify-between items-center">
-            <h3 className="font-bold">My Bet History</h3>
+            <h3 className="font-bold">My Bet History (Last 20)</h3>
             <Button variant="ghost" size="icon" disabled={isLoading}><RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} /></Button>
         </div>
-        {isLoading && <p className="text-center">Loading bets...</p>}
-        {error && <p className="text-center text-destructive">Error loading bets.</p>}
-        {myBets && (
+        {isLoading && <p className="text-center">Loading my bets...</p>}
+        {error && <p className="text-center text-destructive">Could not load bet history. Please check permissions.</p>}
+        {myBets && myBets.length > 0 ? (
              <Table>
                 <TableHeader>
                     <TableRow>
                         <TableHead>Period</TableHead>
                         <TableHead>Select</TableHead>
                         <TableHead>Amount</TableHead>
-                        <TableHead>Result</TableHead>
+                        <TableHead className="text-right">Result</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -56,13 +56,15 @@ export default function MyBetsTab() {
                                 <Badge variant={getStatusVariant(bet.status)}>{bet.choice}</Badge>
                             </TableCell>
                             <TableCell>₹{bet.amount.toFixed(2)}</TableCell>
-                            <TableCell className={bet.won ? 'text-green-500' : 'text-red-500'}>
-                                {bet.status === 'active' ? 'Waiting...' : `₹${bet.payout.toFixed(2)}`}
+                            <TableCell className={cn("text-right font-semibold", bet.won ? 'text-green-500' : 'text-red-500')}>
+                                {bet.status === 'active' ? 'Waiting...' : `${bet.won ? '+' : '-'}₹${bet.status === 'win' ? bet.payout.toFixed(2) : bet.amount.toFixed(2)}`}
                             </TableCell>
                         </TableRow>
                     ))}
                 </TableBody>
             </Table>
+        ) : (
+            !isLoading && <p className="text-center text-muted-foreground pt-4">You have not placed any bets yet.</p>
         )}
     </div>
   );

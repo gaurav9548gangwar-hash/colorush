@@ -13,13 +13,13 @@ export default function GameDashboard() {
         <Tabs defaultValue="game" className="w-full mt-2">
             <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="game">Game</TabsTrigger>
-                <TabsTrigger value="chart">Chart</TabsTrigger>
+                <TabsTrigger value="past-results">Past Results</TabsTrigger>
                 <TabsTrigger value="my-bets">My Bets</TabsTrigger>
             </TabsList>
             <TabsContent value="game">
                 <GameArea />
             </TabsContent>
-            <TabsContent value="chart">
+            <TabsContent value="past-results">
                 <GameHistoryTab />
             </TabsContent>
             <TabsContent value="my-bets">

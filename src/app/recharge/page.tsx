@@ -1,9 +1,10 @@
+
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFirebase } from '@/firebase'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { addDoc, collection, doc, serverTimestamp } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +14,8 @@ import { ArrowLeft } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
+import { useDoc } from '@/firebase/firestore/use-doc'
+import type { User } from '@/lib/types'
 
 const UPI_ID = 'colourtrest99955@ptyes'
 const MIN_DEPOSIT = 200
@@ -26,18 +29,24 @@ export default function RechargePage() {
   const [transactionId, setTransactionId] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  if (isUserLoading) {
-    return <div className="flex items-center justify-center min-h-screen">Authenticating...</div>
-  }
-  
-  if (!user) {
-    router.replace('/login')
+  const userDocRef = useMemo(() => {
+    if (firestore && user) {
+      return doc(firestore, 'users', user.uid)
+    }
     return null
-  }
+  }, [firestore, user]);
+
+  const { data: userData, isLoading: isUserDocLoading } = useDoc<User>(userDocRef);
+
+  useEffect(() => {
+      if (!isUserLoading && !user) {
+        router.replace('/login')
+      }
+  }, [isUserLoading, user, router]);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!firestore || !user) return
+    if (!firestore || !user || !userData) return
 
     if (amount < MIN_DEPOSIT) {
         toast({
@@ -60,7 +69,8 @@ export default function RechargePage() {
 
     const depositData = {
         userId: user.uid,
-        userName: user.displayName || 'N/A',
+        userName: userData.name || 'N/A',
+        userPhone: userData.phone || 'N/A',
         amount: Number(amount),
         transactionId,
         status: 'pending',
@@ -91,6 +101,14 @@ export default function RechargePage() {
       .finally(() => {
         setIsSubmitting(false)
       });
+  }
+  
+  if (isUserLoading || isUserDocLoading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+  }
+  
+  if (!user) {
+    return null
   }
 
   return (

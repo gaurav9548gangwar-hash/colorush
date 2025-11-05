@@ -237,6 +237,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                         <TableHeader>
                             <TableRow>
                                 <TableHead>User</TableHead>
+                                <TableHead>Phone</TableHead>
                                 <TableHead>Amount</TableHead>
                                 <TableHead>Transaction ID</TableHead>
                                 <TableHead>Date</TableHead>
@@ -247,6 +248,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                             {deposits && deposits.length > 0 ? deposits.map(req => (
                                 <TableRow key={req.id}>
                                     <TableCell>{req.userName}</TableCell>
+                                    <TableCell>{req.userPhone}</TableCell>
                                     <TableCell>₹{req.amount.toFixed(2)}</TableCell>
                                     <TableCell>{req.transactionId}</TableCell>
                                     <TableCell>{formatDate(req.createdAt)}</TableCell>
@@ -256,7 +258,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                                     </TableCell>
                                 </TableRow>
                             )) : (
-                                <TableRow><TableCell colSpan={5} className="text-center">No pending deposit requests.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={6} className="text-center">No pending deposit requests.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
@@ -336,6 +338,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                       <TableHeader>
                           <TableRow>
                               <TableHead>User</TableHead>
+                              <TableHead>Phone</TableHead>
                               <TableHead>Amount</TableHead>
                               <TableHead>UPI ID</TableHead>
                               <TableHead>Date</TableHead>
@@ -346,6 +349,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                           {withdrawals && withdrawals.length > 0 ? withdrawals.map(req => (
                               <TableRow key={req.id}>
                                   <TableCell>{req.userName}</TableCell>
+                                  <TableCell>{req.userPhone}</TableCell>
                                   <TableCell>₹{req.amount.toFixed(2)}</TableCell>
                                   <TableCell>{req.upiId}</TableCell>
                                   <TableCell>{formatDate(req.createdAt)}</TableCell>
@@ -355,7 +359,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                                   </TableCell>
                               </TableRow>
                           )) : (
-                              <TableRow><TableCell colSpan={5} className="text-center">No pending withdrawal requests.</TableCell></TableRow>
+                              <TableRow><TableCell colSpan={6} className="text-center">No pending withdrawal requests.</TableCell></TableRow>
                           )}
                       </TableBody>
                   </Table>
@@ -425,5 +429,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    

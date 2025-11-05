@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
@@ -77,6 +78,7 @@ export default function WithdrawPage() {
     const withdrawalData = {
         userId: user.uid,
         userName: userData.name || 'N/A',
+        userPhone: userData.phone || 'N/A',
         amount: Number(amount),
         upiId,
         status: 'pending',
@@ -111,6 +113,10 @@ export default function WithdrawPage() {
 
    if (isUserLoading || isUserDocLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+  }
+   
+  if (!user) {
+    return null;
   }
 
   return (

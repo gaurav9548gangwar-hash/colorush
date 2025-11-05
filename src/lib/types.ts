@@ -38,6 +38,7 @@ export interface DepositRequest {
     id: string;
     userId: string;
     userName: string;
+    userPhone: string;
     amount: number;
     transactionId: string;
     status: 'pending' | 'approved' | 'rejected';
@@ -48,6 +49,7 @@ export interface WithdrawalRequest {
     id: string;
     userId: string;
     userName: string;
+    userPhone: string;
     amount: number;
     upiId: string;
     status: 'pending' | 'approved' | 'rejected';

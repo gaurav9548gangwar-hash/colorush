@@ -142,7 +142,7 @@ export default function AdminPage() {
     
     // Real-time listener for Deposits
     setIsLoadingDeposits(true);
-    const depositQuery = query(collection(firestore, 'deposits'), where('status', 'in', ['pending', 'pending_upload']));
+    const depositQuery = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
     depositUnsubscribe = onSnapshot(depositQuery, async (snapshot) => {
         const depositData = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Deposit));
         const depositsWithUsers = await fetchUserDataForRequests(depositData);
@@ -187,40 +187,38 @@ export default function AdminPage() {
 
     const requestRef = doc(firestore, `${type}s`, requestId);
     const userRef = doc(firestore, 'users', userId);
-    const userDoc = await getDoc(userRef);
-
-
-    if (!userDoc.exists()) {
-        toast({ variant: 'destructive', title: 'Error', description: 'User not found.' });
-        return;
-    }
-    const currentUserData = userDoc.data() as User;
-
-
+    
     try {
-      const batch = writeBatch(firestore);
-      const currentBalance = currentUserData.balance || 0;
+        const userDoc = await getDoc(userRef);
 
-      if (action === 'approved') {
-        if (type === 'deposit') {
-          batch.update(userRef, { balance: currentBalance + amount });
-        } else { // withdrawal
-           if(currentBalance < amount) {
-                toast({ variant: 'destructive', title: 'Insufficient Balance', description: `User only has INR ${currentBalance.toFixed(2)}.` });
-                return;
-           }
-           batch.update(userRef, { balance: currentBalance - amount });
+        if (!userDoc.exists()) {
+            toast({ variant: 'destructive', title: 'Error', description: 'User not found.' });
+            return;
         }
-      }
-      
-      batch.update(requestRef, { status: action });
-      await batch.commit();
+        const currentUserData = userDoc.data() as User;
+        const batch = writeBatch(firestore);
+        const currentBalance = currentUserData.balance || 0;
 
-      toast({ title: 'Success', description: `Request has been ${action}.` });
-      forceUserRefresh(); // Force a refresh of the user list
+        if (action === 'approved') {
+            if (type === 'deposit') {
+                batch.update(userRef, { balance: currentBalance + amount });
+            } else { // withdrawal
+                if(currentBalance < amount) {
+                    toast({ variant: 'destructive', title: 'Insufficient Balance', description: `User only has INR ${currentBalance.toFixed(2)}.` });
+                    return;
+                }
+                batch.update(userRef, { balance: currentBalance - amount });
+            }
+        }
+        
+        batch.update(requestRef, { status: action });
+        await batch.commit();
+
+        toast({ title: 'Success', description: `Request has been ${action}.` });
+        forceUserRefresh(); // Force a refresh of the user list
     } catch (error) {
-      console.error(`Failed to ${action} request:`, error);
-      toast({ variant: 'destructive', title: 'Error', description: `Could not process the request.` });
+        console.error(`Failed to ${action} request:`, error);
+        toast({ variant: 'destructive', title: 'Error', description: `Could not process the request.` });
     }
   };
 
@@ -325,7 +323,7 @@ export default function AdminPage() {
                                 <TableRow>
                                     <TableHead>User</TableHead>
                                     <TableHead>Amount</TableHead>
-                                    <TableHead>Screenshot</TableHead>
+                                    <TableHead>Transaction ID</TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
@@ -335,20 +333,10 @@ export default function AdminPage() {
                                     <TableRow key={d.id}>
                                         <TableCell>{d.user?.name || 'Unknown User'}<br/><span className="text-xs text-muted-foreground">{d.userId}</span></TableCell>
                                         <TableCell>INR {d.amount.toFixed(2)}</TableCell>
-                                        <TableCell>
-                                            {d.screenshotUrl ? (
-                                                <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                                    View
-                                                </a>
-                                            ) : d.status === 'pending_upload' ? (
-                                                <span className="text-muted-foreground text-xs">Uploading...</span>
-                                            ) : (
-                                                <span className="text-destructive text-xs">Missing</span>
-                                            )}
-                                        </TableCell>
+                                        <TableCell className="font-mono text-xs">{d.transactionId || 'N/A'}</TableCell>
                                         <TableCell>{d.requestedAt ? new Date(d.requestedAt).toLocaleString() : 'N/A'}</TableCell>
                                         <TableCell className="text-right space-x-2">
-                                            <Button size="sm" variant="outline" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'approved')} disabled={!d.screenshotUrl}>Approve</Button>
+                                            <Button size="sm" variant="outline" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'approved')}>Approve</Button>
                                             <Button size="sm" variant="destructive" onClick={() => handleRequest('deposit', d.id, d.userId, d.amount, 'rejected')}>Reject</Button>
                                         </TableCell>
                                     </TableRow>

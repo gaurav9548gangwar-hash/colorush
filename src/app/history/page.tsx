@@ -79,15 +79,12 @@ export default function HistoryPage() {
     switch (status) {
         case 'approved': return 'default';
         case 'pending': return 'secondary';
-        case 'pending_upload': return 'secondary';
-        case 'upload_failed': return 'destructive';
         case 'rejected': return 'destructive';
         default: return 'outline';
     }
   }
 
   const getStatusText = (status: string) => {
-      if(status === 'pending_upload') return 'pending';
       return status;
   }
 

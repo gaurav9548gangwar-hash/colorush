@@ -77,10 +77,10 @@
         "userId": { "$ref": "#/entities/User" },
         "amount": { "type": "number", "description": "The amount the user wants to deposit." },
         "status": { "type": "string", "description": "Status of the deposit request (pending, approved, rejected)." },
-        "screenshotUrl": { "type": "string", "description": "URL of the deposit screenshot." },
+        "transactionId": { "type": "string", "description": "The payment transaction ID (UTR/Ref ID)." },
         "requestedAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the deposit was requested." }
       },
-      "required": ["id", "userId", "amount", "status", "screenshotUrl", "requestedAt"]
+      "required": ["id", "userId", "amount", "status", "transactionId", "requestedAt"]
     },
     "Withdrawal": {
       "title": "Withdrawal",

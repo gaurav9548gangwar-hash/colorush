@@ -1,3 +1,4 @@
+
 export type User = {
   id: string;
   name: string;
@@ -12,10 +13,10 @@ export type Deposit = {
   id: string;
   userId: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected' | 'pending_upload' | 'upload_failed';
+  status: 'pending' | 'approved' | 'rejected';
   requestedAt: string;
   user?: User; // Optional: To hold merged user data
-  screenshotUrl: string;
+  transactionId: string;
 };
 
 export type Withdrawal = {

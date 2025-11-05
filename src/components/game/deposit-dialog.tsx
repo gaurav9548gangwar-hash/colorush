@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -17,17 +18,15 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { useFirebase } from "@/firebase";
 import { collection, addDoc } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { v4 as uuidv4 } from "uuid";
 import { Copy, Loader2 } from "lucide-react";
 
 export default function DepositDialog() {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
-  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [transactionId, setTransactionId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-  const { user, firestore, storage } = useFirebase();
+  const { user, firestore } = useFirebase();
   const UPI_ID = "colourtrest99955@ptyes";
 
   const handleCopy = () => {
@@ -38,22 +37,14 @@ export default function DepositDialog() {
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setScreenshotFile(e.target.files[0]);
-    }
-  };
-  
   const resetForm = () => {
     setAmount('');
-    setScreenshotFile(null);
-    const fileInput = document.getElementById('screenshot') as HTMLInputElement;
-    if(fileInput) fileInput.value = '';
+    setTransactionId('');
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !firestore || !storage) {
+    if (!user || !firestore) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
       return;
     }
@@ -61,30 +52,22 @@ export default function DepositDialog() {
       toast({ variant: "destructive", title: "Invalid Amount", description: "Minimum deposit is INR 200." });
       return;
     }
-    if (!screenshotFile) {
-      toast({ variant: "destructive", title: "Screenshot Required", description: "Please upload a payment screenshot." });
+    if (!transactionId.trim()) {
+      toast({ variant: "destructive", title: "Transaction ID Required", description: "Please enter the payment transaction ID." });
       return;
     }
 
     setIsSubmitting(true);
     
     try {
-      // 1. Upload the file first and get its URL.
-      const fileId = uuidv4();
-      const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-      const uploadResult = await uploadBytes(storageRef, screenshotFile);
-      const screenshotUrl = await getDownloadURL(uploadResult.ref);
-
-      // 2. Now, create the Firestore document with the URL.
       await addDoc(collection(firestore, 'deposits'), {
         userId: user.uid,
         amount: Number(amount),
         status: "pending",
         requestedAt: new Date().toISOString(),
-        screenshotUrl: screenshotUrl, 
+        transactionId: transactionId, 
       });
 
-      // 3. Give feedback to the user.
       toast({
           title: "Request Submitted!",
           description: "Your deposit is being processed. You can check the status in your history.",
@@ -114,7 +97,7 @@ export default function DepositDialog() {
         <DialogHeader>
           <DialogTitle>Make a Deposit</DialogTitle>
           <DialogDescription>
-            Pay to the UPI ID below, then enter the amount, upload the screenshot, and submit your request.
+            Pay to the UPI ID below, then enter the amount and Transaction ID (UTR/Ref ID) to submit your request.
             Minimum deposit is INR 200.
           </DialogDescription>
         </DialogHeader>
@@ -143,14 +126,15 @@ export default function DepositDialog() {
               />
             </div>
             <div>
-              <Label htmlFor="screenshot">
-                Payment Screenshot
+              <Label htmlFor="transactionId">
+                Payment Transaction ID (UTR/Ref ID)
               </Label>
               <Input
-                id="screenshot"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
+                id="transactionId"
+                type="text"
+                placeholder="Enter the 12-digit transaction ID"
+                value={transactionId}
+                onChange={(e) => setTransactionId(e.target.value)}
                 required
               />
             </div>

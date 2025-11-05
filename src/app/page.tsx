@@ -6,10 +6,10 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // Always redirect to the login page for users.
-    router.replace('/login');
+    // Always redirect to the admin login page for the admin.
+    router.replace('/admin/login');
   }, [router]);
 
   // This message will be shown briefly while the redirect happens.
-  return <div className="flex items-center justify-center min-h-screen">Redirecting to Login...</div>
+  return <div className="flex items-center justify-center min-h-screen">Redirecting to Admin Login...</div>
 }

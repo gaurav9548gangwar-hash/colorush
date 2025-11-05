@@ -52,7 +52,7 @@ export default function DepositDialog() {
     if(fileInput) fileInput.value = '';
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !firestore || !storage) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in." });
@@ -69,62 +69,56 @@ export default function DepositDialog() {
 
     setIsSubmitting(true);
     
-    try {
-      // 1. Immediately create the document with a 'pending_upload' status
-      const depositsRef = collection(firestore, 'deposits');
-      const newDepositDoc = await addDoc(depositsRef, {
-        userId: user.uid,
-        amount: Number(amount),
-        status: "pending_upload", // New initial status
-        requestedAt: new Date().toISOString(),
-        screenshotUrl: "", // Initially empty
-      });
-      
-      // 2. Give immediate feedback to the user
+    // 1. Immediately create the document with a 'pending_upload' status
+    addDoc(collection(firestore, 'deposits'), {
+      userId: user.uid,
+      amount: Number(amount),
+      status: "pending_upload",
+      requestedAt: new Date().toISOString(),
+      screenshotUrl: "",
+    }).then(newDepositDoc => {
+      // 2. Give immediate feedback to the user and start background upload
       toast({
         title: "Request Submitted!",
         description: "Your deposit is being processed. You can check the status in your history.",
       });
       setOpen(false);
       resetForm();
+      setIsSubmitting(false);
 
       // 3. Start background upload task
-      const uploadTask = async () => {
-        try {
-          const fileId = uuidv4();
-          const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
-          const uploadResult = await uploadBytes(storageRef, screenshotFile);
-          const screenshotUrl = await getDownloadURL(uploadResult.ref);
-
-          // 4. Update the document with the URL and final 'pending' status
-          const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-          await updateDoc(docToUpdateRef, {
-            screenshotUrl: screenshotUrl,
-            status: "pending",
-          });
-        } catch (uploadError) {
-          console.error("Background upload failed:", uploadError);
-          // Optionally update the doc to show an error
-          const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
-          await updateDoc(docToUpdateRef, {
-            status: "upload_failed",
-          });
-        }
-      };
-      
-      // Execute the upload task in the background (don't await it here)
-      uploadTask();
-
-    } catch (error) {
-        console.error("Error submitting initial deposit request:", error);
-        toast({
-            variant: "destructive",
-            title: "Submission Failed",
-            description: "Could not submit your deposit request. Please try again.",
+      if (screenshotFile) {
+        const fileId = uuidv4();
+        const storageRef = ref(storage, `deposit_screenshots/${user.uid}/${fileId}`);
+        
+        uploadBytes(storageRef, screenshotFile).then(uploadResult => {
+            getDownloadURL(uploadResult.ref).then(screenshotUrl => {
+                 // 4. Update the document with the URL and final 'pending' status
+                const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
+                updateDoc(docToUpdateRef, {
+                    screenshotUrl: screenshotUrl,
+                    status: "pending",
+                });
+            }).catch(urlError => {
+                 console.error("Failed to get download URL:", urlError);
+                 const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
+                 updateDoc(docToUpdateRef, { status: "upload_failed" });
+            });
+        }).catch(uploadError => {
+            console.error("Background upload failed:", uploadError);
+            const docToUpdateRef = doc(firestore, 'deposits', newDepositDoc.id);
+            updateDoc(docToUpdateRef, { status: "upload_failed" });
         });
-    } finally {
-        setIsSubmitting(false); 
-    }
+      }
+    }).catch(error => {
+      console.error("Error submitting initial deposit request:", error);
+      toast({
+          variant: "destructive",
+          title: "Submission Failed",
+          description: "Could not submit your deposit request. Please try again.",
+      });
+      setIsSubmitting(false); 
+    });
   };
 
   return (

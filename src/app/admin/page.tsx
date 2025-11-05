@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Label } from "@/components/ui/label"
 import { LogOut, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCollection } from '@/firebase/firestore/use-collection'
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
@@ -95,7 +95,7 @@ function DepositRequestsTab() {
     const depositsRef = useMemoFirebase(() => firestore 
         ? query(collection(firestore, 'deposits'), where('status', '==', 'pending'), orderBy('createdAt', 'desc')) 
         : null, [firestore, key]);
-    const { data: deposits, isLoading } = useCollection<DepositRequest>(depositsRef);
+    const { data: deposits, isLoading, error } = useCollection<DepositRequest>(depositsRef);
 
     const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
@@ -147,32 +147,37 @@ function DepositRequestsTab() {
             <CardHeader><CardTitle>Pending Deposit Requests</CardTitle></CardHeader>
             <CardContent>
                 {isLoading && <p>Loading requests...</p>}
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>User</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Transaction ID</TableHead>
-                            <TableHead>Date</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {deposits?.map(req => (
-                            <TableRow key={req.id}>
-                                <TableCell>{req.userName}</TableCell>
-                                <TableCell>₹{req.amount.toFixed(2)}</TableCell>
-                                <TableCell>{req.transactionId}</TableCell>
-                                <TableCell>{new Date(req.createdAt.toDate()).toLocaleString()}</TableCell>
-                                <TableCell className="text-right space-x-2">
-                                    <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
-                                    <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
-                                </TableCell>
+                {error && <p className="text-destructive">Error: {error.message}. Check security rules and console.</p>}
+                {!isLoading && !error && (
+                  <>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>User</TableHead>
+                                <TableHead>Amount</TableHead>
+                                <TableHead>Transaction ID</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-                 {deposits?.length === 0 && !isLoading && <p className="text-center text-muted-foreground py-4">No pending deposit requests.</p>}
+                        </TableHeader>
+                        <TableBody>
+                            {deposits?.map(req => (
+                                <TableRow key={req.id}>
+                                    <TableCell>{req.userName}</TableCell>
+                                    <TableCell>₹{req.amount.toFixed(2)}</TableCell>
+                                    <TableCell>{req.transactionId}</TableCell>
+                                    <TableCell>{new Date(req.createdAt.toDate()).toLocaleString()}</TableCell>
+                                    <TableCell className="text-right space-x-2">
+                                        <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
+                                        <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                    {deposits?.length === 0 && <p className="text-center text-muted-foreground py-4">No pending deposit requests.</p>}
+                  </>
+                )}
             </CardContent>
         </Card>
     )
@@ -186,7 +191,7 @@ function WithdrawalRequestsTab() {
     const withdrawalsRef = useMemoFirebase(() => firestore 
         ? query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'), orderBy('createdAt', 'desc')) 
         : null, [firestore, key]);
-    const { data: withdrawals, isLoading } = useCollection<WithdrawalRequest>(withdrawalsRef);
+    const { data: withdrawals, isLoading, error } = useCollection<WithdrawalRequest>(withdrawalsRef);
     
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
@@ -243,32 +248,37 @@ function WithdrawalRequestsTab() {
             <CardHeader><CardTitle>Pending Withdrawal Requests</CardTitle></CardHeader>
             <CardContent>
                 {isLoading && <p>Loading requests...</p>}
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>User</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>UPI ID</TableHead>
-                            <TableHead>Date</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {withdrawals?.map(req => (
-                            <TableRow key={req.id}>
-                                <TableCell>{req.userName}</TableCell>
-                                <TableCell>₹{req.amount.toFixed(2)}</TableCell>
-                                <TableCell>{req.upiId}</TableCell>
-                                <TableCell>{new Date(req.createdAt.toDate()).toLocaleString()}</TableCell>
-                                <TableCell className="text-right space-x-2">
-                                    <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
-                                    <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
-                                </TableCell>
+                {error && <p className="text-destructive">Error: {error.message}. Check security rules and console.</p>}
+                {!isLoading && !error && (
+                  <>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>User</TableHead>
+                                <TableHead>Amount</TableHead>
+                                <TableHead>UPI ID</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-                {withdrawals?.length === 0 && !isLoading && <p className="text-center text-muted-foreground py-4">No pending withdrawal requests.</p>}
+                        </TableHeader>
+                        <TableBody>
+                            {withdrawals?.map(req => (
+                                <TableRow key={req.id}>
+                                    <TableCell>{req.userName}</TableCell>
+                                    <TableCell>₹{req.amount.toFixed(2)}</TableCell>
+                                    <TableCell>{req.upiId}</TableCell>
+                                    <TableCell>{new Date(req.createdAt.toDate()).toLocaleString()}</TableCell>
+                                    <TableCell className="text-right space-x-2">
+                                        <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
+                                        <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                    {withdrawals?.length === 0 && <p className="text-center text-muted-foreground py-4">No pending withdrawal requests.</p>}
+                  </>
+                )}
             </CardContent>
         </Card>
     )
@@ -310,7 +320,7 @@ export default function AdminPage() {
   if (isAuthenticating) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Loading Admin Panel...</p>
+        <p>Verifying Admin session...</p>
       </div>
     );
   }
@@ -348,9 +358,10 @@ export default function AdminPage() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                {isLoadingUsers ? (<p>Loading users...</p>) : (
+                {isLoadingUsers && <p>Loading users...</p>}
+                {usersError && <p className="text-destructive">Error: {usersError.message}. Check security rules and console.</p>}
+                {!isLoadingUsers && !usersError && (
                     <>
-                    {usersError && <p className="text-destructive">Error: {usersError.message}. Check security rules and console.</p>}
                     <Table>
                     <TableHeader>
                         <TableRow>

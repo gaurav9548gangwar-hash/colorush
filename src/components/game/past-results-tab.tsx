@@ -7,7 +7,6 @@ import { useCollection } from '@/firebase/firestore/use-collection'
 import type { GameResult } from '@/lib/types'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 
 export function PastResultsTab() {
   const { firestore } = useFirebase()
@@ -31,7 +30,6 @@ export function PastResultsTab() {
   }
 
   return (
-    <ScrollArea className="h-72">
       <Table>
         <TableHeader>
           <TableRow>
@@ -58,6 +56,5 @@ export function PastResultsTab() {
           ))}
         </TableBody>
       </Table>
-    </ScrollArea>
   )
 }

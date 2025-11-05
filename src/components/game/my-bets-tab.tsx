@@ -7,7 +7,6 @@ import { useCollection } from '@/firebase/firestore/use-collection'
 import type { Bet } from '@/lib/types'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface MyBetsTabProps {
   userId: string
@@ -75,7 +74,6 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   }
 
   return (
-    <ScrollArea className="h-72">
       <Table>
         <TableHeader>
           <TableRow>
@@ -96,6 +94,5 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
           ))}
         </TableBody>
       </Table>
-    </ScrollArea>
   )
 }

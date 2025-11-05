@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth"
 import { useFirebase } from "@/firebase"
 import { doc, setDoc } from "firebase/firestore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -31,13 +31,25 @@ export default function LoginPage() {
     e.preventDefault()
     if (!auth || !firestore) return
     setIsSubmitting(true)
+
+    // Validate phone number for 10 digits
+    if (!/^\d{10}$/.test(phone)) {
+        toast({
+            variant: "destructive",
+            title: "Invalid Phone Number",
+            description: "Phone number must be exactly 10 digits.",
+        })
+        setIsSubmitting(false)
+        return
+    }
+
     // Create a unique email-like ID for Firebase Auth from the phone number
     const emailId = `${phone}@tiranga.in`
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
       const newUser = userCredential.user
-      await userCredential.user.updateProfile({ displayName: name });
+      await updateProfile(newUser, { displayName: name });
 
 
       const userData = {
@@ -133,7 +145,7 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" type="tel" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} required pattern="\\d{10}" title="Phone number must be 10 digits"/>
+                    <Input id="phone" type="tel" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} required title="Phone number must be 10 digits"/>
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>

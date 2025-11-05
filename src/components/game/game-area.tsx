@@ -49,7 +49,7 @@ export default function GameArea() {
   const [betAmount, setBetAmount] = useState(10);
   const [isBettingLocked, setIsBettingLocked] = useState(false);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
-  const [currentRoundId, setCurrentRoundId] = useState<string>('');
+  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null);
   
   const [pastResults, setPastResults] = useState<GameResult[]>([]);
   const [userBets, setUserBets] = useState<Bet[]>([]);
@@ -58,7 +58,7 @@ export default function GameArea() {
   const { toast } = useToast();
   
   useEffect(() => {
-    // Generate the initial round ID only on the client side
+    // Generate the initial round ID only on the client side to avoid hydration errors
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }, []);
 
@@ -476,5 +476,3 @@ export default function GameArea() {
     </section>
   );
 }
-
-    

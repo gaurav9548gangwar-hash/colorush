@@ -24,8 +24,8 @@ import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Input } from "../ui/input";
 import CountdownTimer from "./countdown-timer";
-import { useFirebase, useDoc, useMemoFirebase, useCollection, setDocumentNonBlocking } from "@/firebase";
-import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, collectionGroup } from "firebase/firestore";
+import { useFirebase, useDoc, useMemoFirebase, useCollection } from "@/firebase";
+import { collection, serverTimestamp, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, collectionGroup, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -71,12 +71,12 @@ export default function GameArea() {
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [showResultEmoji, setShowResultEmoji] = useState<'win' | 'loss' | null>(null);
   const [currentRoundId, setCurrentRoundId] = useState<string>('');
+  const [isBettingLocked, setIsBettingLocked] = useState(false);
 
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Generate the initial round ID on the client side after mount
     if (!currentRoundId) {
         setCurrentRoundId(`round_${new Date().getTime()}`);
     }
@@ -88,11 +88,9 @@ export default function GameArea() {
   }, [user, firestore]);
   const { data: userData } = useDoc<User>(userRef);
 
-  // Live Past Game Results
   const gameRoundsRef = useMemoFirebase(() => firestore ? query(collection(firestore, 'game_rounds'), orderBy('startTime', 'desc'), limit(10)) : null, [firestore]);
   const { data: pastResults } = useCollection<GameResult>(gameRoundsRef);
   
-  // Live User Bets
   const userBetsRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
     return query(collection(firestore, 'users', user.uid, 'bets'), orderBy('createdAt', 'desc'), limit(10));
@@ -103,15 +101,19 @@ export default function GameArea() {
     setSelection(prev => ({ ...prev, [type]: value }));
   };
 
-  const isBetReady = selection.color !== null && betAmount > 0 && selection.number !== null && selection.size !== null;
+  const isBetReady = selection.color !== null && betAmount > 0;
 
   const handlePlaceBet = async () => {
     if (!user || !firestore || !userData) {
       toast({ variant: "destructive", title: "Please log in to place a bet." });
       return;
     }
-    if (!isBetReady) {
-       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color, number, and size." });
+    if (isBettingLocked) {
+      toast({ variant: "destructive", title: "Betting Locked", description: "You cannot place bets at this time." });
+      return;
+    }
+    if (!selection.color) {
+       toast({ variant: "destructive", title: "Incomplete Selection", description: "Please select a color." });
        return;
     }
     if (userData.balance < betAmount) {
@@ -120,15 +122,13 @@ export default function GameArea() {
     }
 
     try {
-      // 1. Deduct bet amount immediately
       const newBalance = userData.balance - betAmount;
       if (userRef) {
         await updateDoc(userRef, { balance: newBalance });
       }
 
-      // 2. Create a new bet document in Firestore
       const newBetRef = doc(collection(firestore, `users/${user.uid}/bets`));
-      const betChoice = `color:${selection.color},number:${selection.number},size:${selection.size}`;
+      const betChoice = `color:${selection.color}`;
 
       const betData = {
         userId: user.uid,
@@ -141,25 +141,23 @@ export default function GameArea() {
         won: false,
       };
 
-      await setDocumentNonBlocking(newBetRef, betData, {});
+      await setDoc(newBetRef, betData);
       
-      // 3. Store current bet to check for win/loss later
       setBetsThisRound(prev => [...prev, { id: newBetRef.id, amount: betAmount, choice: betChoice, userId: user.uid }]);
 
       toast({ title: "Bet Placed!", description: `INR ${betAmount} deducted from your wallet.` });
-      // 4. Reset selections for next round
       setSelection({ color: null, number: null, size: null });
       setBetAmount(10);
     } catch (error: any) {
       console.error("Error placing bet:", error);
       toast({ variant: "destructive", title: "Failed to place bet.", description: error.message });
-      // Revert balance if bet placement fails
       if(userRef) await updateDoc(userRef, { balance: userData.balance });
     }
   };
   
   const handleRoundEnd = async () => {
     if (!firestore || !currentRoundId) return;
+    setIsBettingLocked(true); // Lock betting as soon as round ends
 
     const allUsersBetsQuery = query(
         collectionGroup(firestore, 'bets'),
@@ -167,7 +165,8 @@ export default function GameArea() {
         where('status', '==', 'active')
     );
 
-    getDocs(allUsersBetsQuery).then(async allBetsSnapshot => {
+    try {
+        const allBetsSnapshot = await getDocs(allUsersBetsQuery);
         const allBetsInRound: PlacedBetInfo[] = [];
         allBetsSnapshot.forEach(doc => {
             const data = doc.data();
@@ -180,14 +179,12 @@ export default function GameArea() {
         });
 
         let winningColor: 'green' | 'orange' | 'white';
+        const colorTotals = { green: 0, orange: 0, white: 0 };
 
         if (allBetsInRound.length === 0) {
-            // Case 1: No bets were placed in this round. Pick a random color.
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         } else {
-            // Case 2: Bets were placed. Determine the winning color based on the lowest total bet amount.
-            const colorTotals = { green: 0, orange: 0, white: 0 };
             allBetsInRound.forEach(bet => {
                 const betColor = bet.choice.split(',').find(p => p.startsWith('color:'))?.split(':')[1] as keyof typeof colorTotals;
                 if (betColor && colorTotals.hasOwnProperty(betColor)) {
@@ -195,7 +192,6 @@ export default function GameArea() {
                 }
             });
 
-            // Determine the winning color (the one with the least money)
             let tempWinningColor: keyof typeof colorTotals = 'green';
             let minBet = Infinity;
 
@@ -240,6 +236,7 @@ export default function GameArea() {
                 batch.update(betDocRef, { status: 'win', won: true, payout: payout });
 
                 const userToUpdateRef = doc(firestore, 'users', bet.userId);
+                // We need to get the user's current balance before updating in a batch
                 const userDoc = await getDoc(userToUpdateRef);
                 if (userDoc.exists()) {
                     const currentBalance = userDoc.data().balance || 0;
@@ -270,14 +267,14 @@ export default function GameArea() {
             }
         }
 
-    }).catch(serverError => {
+    } catch(serverError: any) {
         const permissionError = new FirestorePermissionError({
             path: `bets (collectionGroup)`,
             operation: 'list',
         });
         errorEmitter.emit('permission-error', permissionError);
-        toast({ variant: "destructive", title: "Error", description: "Could not process round results." });
-    });
+        toast({ variant: "destructive", title: "Error Calculating Results", description: serverError.message });
+    }
 
     setTimeout(() => {
         setShowResultEmoji(null);
@@ -288,12 +285,12 @@ export default function GameArea() {
     setBetsThisRound([]);
     setGameResult(null);
     setShowResultEmoji(null);
+    setIsBettingLocked(false);
     setCurrentRoundId(`round_${new Date().getTime()}`);
   }
 
   return (
     <section className="space-y-4 relative">
-      {/* Win/Loss Emoji Overlay */}
       {showResultEmoji && (
          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
             <p className="text-8xl animate-bounce">
@@ -302,8 +299,6 @@ export default function GameArea() {
          </div>
       )}
 
-
-      {/* Countdown and Current Game Info */}
       <div className="flex items-center justify-between p-4 rounded-lg bg-background/30">
         <div>
           <p className="text-sm text-gray-400">Win Go 1 Min</p>
@@ -314,11 +309,10 @@ export default function GameArea() {
         </div>
       </div>
       
-       {/* Result Display */}
       {gameResult && (
         <Card className="bg-primary/20 border-primary">
             <CardHeader className="text-center pb-2">
-                <CardTitle>Result</CardTitle>
+                <CardTitle>Result for {gameResult.id}</CardTitle>
             </CardHeader>
             <CardContent className="flex items-center justify-center gap-4">
                 <p className="text-2xl font-bold">{gameResult.resultNumber}</p>
@@ -329,15 +323,12 @@ export default function GameArea() {
         </Card>
       )}
 
-
-      {/* Betting UI */}
       <Card className="bg-background/30 border-primary/50">
         <CardHeader>
           <CardTitle>Place Your Bet</CardTitle>
-          <CardDescription>Follow the steps to place your bet for the next round.</CardDescription>
+          <CardDescription>Select a color and amount.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Step 1: Color */}
           <div className="space-y-2">
             <Label className="text-base">1. Choose Color</Label>
             <div className="grid grid-cols-3 gap-2">
@@ -345,6 +336,7 @@ export default function GameArea() {
                 variant={selection.color === 'green' ? 'default' : 'secondary'}
                 className={cn("h-16 text-xl bg-green-500 hover:bg-green-600 text-white", selection.color === 'green' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'green')}
+                disabled={isBettingLocked}
               >
                 Green
               </Button>
@@ -352,6 +344,7 @@ export default function GameArea() {
                 variant={selection.color === 'white' ? 'default' : 'secondary'}
                 className={cn("h-16 text-xl bg-gray-200 text-black hover:bg-gray-300", selection.color === 'white' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'white')}
+                disabled={isBettingLocked}
               >
                 White
               </Button>
@@ -359,63 +352,23 @@ export default function GameArea() {
                 variant={selection.color === 'orange' ? 'default' : 'secondary'}
                 className={cn("h-16 text-xl bg-orange-500 hover:bg-orange-600 text-white", selection.color === 'orange' && 'ring-2 ring-offset-2 ring-primary')}
                 onClick={() => handleSelection('color', 'orange')}
+                disabled={isBettingLocked}
               >
                 Orange
               </Button>
             </div>
           </div>
 
-          {/* Step 2: Number */}
-           <div className="space-y-2">
-            <Label className="text-base">2. Choose Number</Label>
-             <div className="grid grid-cols-5 gap-2">
-                {Array.from({ length: 10 }, (_, i) => {
-                    return (
-                        <Button
-                            key={i}
-                            size="circle"
-                            variant={'secondary'}
-                            className={cn('h-12 w-12 text-xl font-bold text-white', numberButtonColors[i], selection.number === i && 'ring-2 ring-offset-2 ring-primary')}
-                            onClick={() => handleSelection('number', i)}
-                        >
-                            {i}x
-                        </Button>
-                    );
-                })}
-            </div>
-          </div>
-
-          {/* Step 3: Size */}
           <div className="space-y-2">
-            <Label className="text-base">3. Choose Size</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={selection.size === 'small' ? 'default' : 'secondary'}
-                className={cn("h-14 text-xl", selection.size === 'small' && 'ring-2 ring-offset-2 ring-primary')}
-                onClick={() => handleSelection('size', 'small')}
-              >
-                Small
-              </Button>
-              <Button
-                variant={selection.size === 'big' ? 'default' : 'secondary'}
-                className={cn("h-14 text-xl", selection.size === 'big' && 'ring-2 ring-offset-2 ring-primary')}
-                onClick={() => handleSelection('size', 'big')}
-              >
-                Big
-              </Button>
-            </div>
-          </div>
-          
-          {/* Step 4: Amount */}
-          <div className="space-y-2">
-              <Label className="text-base">4. Choose Amount</Label>
+              <Label className="text-base">2. Choose Amount</Label>
                <RadioGroup
                 defaultValue="10"
                 className="grid grid-cols-5 gap-2"
                 onValueChange={(value) => setBetAmount(Number(value))}
                 value={String(betAmount)}
+                disabled={isBettingLocked}
               >
-                {[10, 20, 30, 40, 50].map((val) => (
+                {[10, 50, 100, 500, 1000].map((val) => (
                   <div key={val} className="flex items-center space-x-2">
                     <RadioGroupItem value={String(val)} id={`r${val}`} />
                     <Label htmlFor={`r${val}`}>{val}</Label>
@@ -428,19 +381,19 @@ export default function GameArea() {
                 onChange={(e) => setBetAmount(Number(e.target.value))} 
                 placeholder="Or enter custom amount"
                 className="mt-2 bg-input"
+                disabled={isBettingLocked}
               />
           </div>
 
         </CardContent>
         <CardFooter>
-            <Button className="w-full h-14 text-xl" disabled={!isBetReady} onClick={handlePlaceBet}>
-                Place Bet
+            <Button className="w-full h-14 text-xl" disabled={!isBetReady || isBettingLocked} onClick={handlePlaceBet}>
+                {isBettingLocked ? "Waiting for next round..." : "Place Bet"}
             </Button>
         </CardFooter>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* My Bets History */}
         <div className="rounded-lg bg-background/30 p-4">
           <h3 className="font-bold mb-2 text-center">My Bets</h3>
           <Table>
@@ -473,8 +426,6 @@ export default function GameArea() {
           </Table>
         </div>
 
-
-        {/* Past Results */}
         <div className="rounded-lg bg-background/30 p-4">
           <h3 className="font-bold mb-2 text-center">Past Results</h3>
           <Table>
@@ -501,8 +452,5 @@ export default function GameArea() {
       </div>
     </section>
   );
-    
-
-
 
     

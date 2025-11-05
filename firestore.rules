@@ -14,38 +14,33 @@ service cloud.firestore {
     }
 
     match /deposits/{depositId} {
-      // Users can only read their own deposits. Admin can write to any.
       allow get: if request.auth.uid == resource.data.userId;
-      allow list: if request.query.where.userId == request.auth.uid;
-      allow write: if true; // Allows admin to approve/reject
+      allow list: if request.auth != null && request.query.where[0][2] == request.auth.uid;
       allow create: if request.auth.uid == request.resource.data.userId;
+      // Admin write access is implicitly handled by backend logic/trusted environment
+      allow update, delete: if false; 
     }
 
      match /withdrawals/{withdrawalId} {
-      // Users can only read their own withdrawals. Admin can write to any.
       allow get: if request.auth.uid == resource.data.userId;
-      allow list: if request.query.where.userId == request.auth.uid;
-      allow write: if true; // Allows admin to approve/reject
+      allow list: if request.auth != null && request.query.where[0][2] == request.auth.uid;
       allow create: if request.auth.uid == request.resource.data.userId;
+       // Admin write access is implicitly handled by backend logic/trusted environment
+      allow update, delete: if false;
      }
-
-     // Admin can read all user data for the panel
-     match /users/{document=**} {
-       allow read, write: if true;
-     }
-
+    
     match /users/{userId} {
       // A user can create their own profile.
       allow create: if isOwner(userId);
       // A user can delete their own profile.
       allow delete: if isOwner(userId);
-      // A user can only update their own profile (e.g. balance)
-      allow update: if isOwner(userId);
+      // A user can only read and update their own profile (e.g. balance)
+      allow read, update: if isOwner(userId);
 
       // This rule ensures a user can only access their own subcollections.
-      // The collection group rule above handles the cross-user query for game logic.
       match /bets/{betId} {
-        // A user can read and manage their own specific bets.
+        // A user can get, create, update, and delete their own specific bets.
+        // The collection group rule above handles the cross-user 'list' query for game logic.
         allow get, write: if isOwner(userId);
       }
     }
@@ -56,11 +51,13 @@ service cloud.firestore {
     }
 
     match /game_rounds/{gameId} {
-      // Game rounds are public information. Any client can create a new game
-      // round result, and anyone can read it. In a production app, writes
-      // should be locked down to a trusted server environment.
+      // Game rounds are public information.
       allow read: if true;
-      allow write: if true;
+      // In a production app, writes should be locked down to a trusted server environment.
+      // For this app, we allow client-side creation of game results from the game logic.
+      allow write: if request.auth != null;
     }
   }
 }
+
+    

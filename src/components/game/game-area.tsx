@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "../ui/button";
 import CountdownTimer from "./countdown-timer";
-import { useFirebase, useMemoFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase";
 import { collection, doc, setDoc, updateDoc, query, where, getDocs, writeBatch, getDoc, addDoc, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
@@ -116,6 +116,7 @@ export default function GameArea() {
     setIsProcessing(true);
 
     try {
+        // 1. Fetch all active bets for the current round.
         const allBetsInRoundQuery = query(
             collection(firestore, 'bets'), 
             where('roundId', '==', currentRoundId), 
@@ -123,28 +124,33 @@ export default function GameArea() {
         );
         const allBetsSnapshot = await getDocs(allBetsInRoundQuery);
         const activeBets = allBetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
-
+        
+        // 2. Calculate potential payouts to determine the winning color.
         const colorTotals: { [color: string]: number } = { green: 0, orange: 0, white: 0 };
         activeBets.forEach(bet => {
             if (bet.choice.startsWith('color:')) {
                 const color = bet.choice.split(':')[1];
-                if (color in colorTotals) colorTotals[color] += bet.amount * 2;
+                if (color in colorTotals) colorTotals[color] += bet.amount * 2; // Simplified payout for color bets
             }
         });
 
+        // Determine the color with the minimum potential payout.
         let winningColor: 'green' | 'orange' | 'white';
         if (activeBets.length > 0) {
-            const minPayout = Math.min(...Object.values(colorTotals));
+            const minPayout = Math.min(colorTotals.green, colorTotals.orange, colorTotals.white);
             const tiedColors = (Object.keys(colorTotals) as ('green' | 'orange' | 'white')[]).filter(c => colorTotals[c] === minPayout);
             winningColor = tiedColors[Math.floor(Math.random() * tiedColors.length)];
         } else {
+            // If no bets, pick a random color.
             const colors: ('green' | 'orange' | 'white')[] = ['green', 'orange', 'white'];
             winningColor = colors[Math.floor(Math.random() * colors.length)];
         }
 
+        // 3. Determine other winning attributes.
         const winningNumber = Math.floor(Math.random() * 10);
         const winningSize = winningNumber >= 5 ? 'big' : 'small';
 
+        // 4. Create the final result object.
         const resultData: GameResult = {
             id: currentRoundId,
             gameId: currentRoundId,
@@ -154,15 +160,21 @@ export default function GameArea() {
             startTime: new Date().toISOString(),
             status: 'finished'
         };
+        
+        // 5. Set result for UI display IMMEDIATELY.
+        setGameResult(resultData); 
 
-        setGameResult(resultData);
-
+        // 6. Create a single atomic batch to update everything in the database.
         const batch = writeBatch(firestore);
+
+        // 6a. Add the round result to the batch.
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(roundDocRef, resultData);
         
+        // 6b. Process each bet and update user balances in the batch.
         const userPayouts: { [userId: string]: number } = {};
-        activeBets.forEach(bet => {
+
+        for (const bet of activeBets) {
             const betDocRef = doc(firestore, 'bets', bet.id);
             const [betType, betValue] = bet.choice.split(':');
             let didWin = false;
@@ -178,8 +190,9 @@ export default function GameArea() {
             } else {
                 batch.update(betDocRef, { status: 'loss', won: false, payout: 0 });
             }
-        });
-
+        }
+        
+        // 6c. Fetch user balances and add balance updates to the batch.
         const userIdsToUpdate = Object.keys(userPayouts);
         if (userIdsToUpdate.length > 0) {
             const userRefsToFetch = userIdsToUpdate.map(uid => doc(firestore, 'users', uid));
@@ -196,6 +209,7 @@ export default function GameArea() {
             });
         }
         
+        // 7. Commit the entire batch at once.
         await batch.commit();
 
     } catch (error) {
@@ -204,7 +218,7 @@ export default function GameArea() {
     } finally {
         setIsProcessing(false);
     }
-  }, [firestore, currentRoundId, user, toast]);
+  }, [firestore, currentRoundId, toast]);
   
   const handleNewRound = useCallback(() => {
     setIsBettingLocked(false);
@@ -212,6 +226,7 @@ export default function GameArea() {
     setSelection({ type: null, value: null });
     setMultiplier(1);
     setCurrentRoundId(`round_${new Date().getTime()}`);
+    setIsProcessing(false);
   }, []);
   
   const numberToColorClass = (num: number) => {
@@ -323,5 +338,3 @@ export default function GameArea() {
     </div>
   );
 }
-
-    

@@ -20,14 +20,10 @@ export default function CountdownTimer({
   const [secondsLeft, setSecondsLeft] = useState(TOTAL_DURATION);
   const [phase, setPhase] = useState<GamePhase>("betting");
   
-  // Ref to ensure onRoundEnd is called only once per round
-  const roundEndFiredRef = useRef(false);
-
   // Reset timer and phase whenever a new round starts (i.e., roundId changes)
   useEffect(() => {
     setSecondsLeft(TOTAL_DURATION);
     setPhase("betting");
-    roundEndFiredRef.current = false;
   }, [roundId]);
 
   // Main countdown interval logic
@@ -39,22 +35,23 @@ export default function CountdownTimer({
     }
 
     const intervalId = setInterval(() => {
-      setSecondsLeft((prevSeconds) => prevSeconds - 1);
+      setSecondsLeft((prevSeconds) => {
+          const newSeconds = prevSeconds - 1;
+          
+          // Check if it's time to lock the betting
+          if (newSeconds === LOCKED_DURATION && phase === "betting") {
+              setPhase("locked");
+              onRoundEnd(); // Trigger the round end logic in the parent
+          }
+
+          return newSeconds;
+      });
     }, 1000);
 
     // Cleanup interval on component unmount or when secondsLeft changes
     return () => clearInterval(intervalId);
-  }, [secondsLeft, onNewRound]);
+  }, [secondsLeft, phase, onRoundEnd, onNewRound]);
 
-  // Effect to handle phase changes and trigger onRoundEnd
-  useEffect(() => {
-    // Check if it's time to lock the betting
-    if (secondsLeft <= LOCKED_DURATION && phase === "betting" && !roundEndFiredRef.current) {
-      setPhase("locked");
-      onRoundEnd(); // Trigger the round end logic in the parent
-      roundEndFiredRef.current = true; // Mark as fired for this round
-    }
-  }, [secondsLeft, phase, onRoundEnd]);
 
   const getDisplayTime = () => {
     const secondsInPhase = phase === 'betting' ? secondsLeft - LOCKED_DURATION : secondsLeft;

@@ -163,17 +163,17 @@ export default function GameArea() {
             status: 'finished'
         };
 
-        // 4. Create a single atomic batch to update everything.
+        // 4. Set result for UI display IMMEDIATELY
+        setGameResult(resultData); 
+
+        // 5. Create a single atomic batch to update everything.
         const batch = writeBatch(firestore);
 
-        // 4a. Add the round result to the batch.
+        // 5a. Add the round result to the batch.
         const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
         batch.set(roundDocRef, resultData);
         
-        // 4b. Set result for UI display
-        setGameResult(resultData); 
-
-        // 4c. Process all bets and add updates to the batch.
+        // 5c. Process all bets and add updates to the batch.
         const userPayouts: { [userId: string]: number } = {};
         activeBets.forEach(bet => {
             const betDocRef = doc(firestore, 'bets', bet.id);
@@ -193,7 +193,7 @@ export default function GameArea() {
             }
         });
 
-        // 4d. Fetch current balances and add user balance updates to the batch.
+        // 5d. Fetch current balances and add user balance updates to the batch.
         const userIdsToUpdate = Object.keys(userPayouts);
         if (userIdsToUpdate.length > 0) {
             const userRefsToFetch = userIdsToUpdate.map(uid => doc(firestore, 'users', uid));
@@ -213,7 +213,7 @@ export default function GameArea() {
             });
         }
         
-        // 5. Commit the atomic batch.
+        // 6. Commit the atomic batch.
         await batch.commit();
 
     } catch (error) {

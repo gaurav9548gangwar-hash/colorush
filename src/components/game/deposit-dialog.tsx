@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { useFirebase, useStorage } from "@/firebase";
+import { useFirebase } from "@/firebase";
 import { collection, addDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
@@ -27,8 +27,7 @@ export default function DepositDialog() {
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-  const { user, firestore } = useFirebase();
-  const storage = useStorage();
+  const { user, firestore, storage } = useFirebase();
   const UPI_ID = "colourtrest99955@ptyes";
 
   const handleCopy = () => {

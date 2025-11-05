@@ -16,43 +16,40 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      // A user can create their own profile document.
       allow create: if isOwner(userId);
-      allow read, update: if isOwner(userId) || isAdmin();
+      
+      // An admin can read any user's data. A user can only read their own.
+      allow read: if isOwner(userId) || isAdmin();
+
+      // A user can only update their own profile. Admin can update any.
+      allow update: if isOwner(userId) || isAdmin();
+      
+      // A user can delete their own profile.
       allow delete: if isOwner(userId);
-      // Admin can list all users. The query in the app is simple and doesn't need complex rules.
+      
+      // Admin can list all users.
       allow list: if isAdmin();
     }
 
     match /deposits/{depositId} {
-      // Admin can list documents where status is 'pending'.
-      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
-      
-      // An admin or the owner can get a specific deposit request.
-      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
-
+      // Admin can read all deposit documents
+      allow read: if isAdmin();
       // A user can create their own deposit request.
       allow create: if request.auth.uid == request.resource.data.userId;
-      
       // Only an admin can update (approve/reject) a deposit request.
       allow update: if isAdmin();
-      
       // No one can delete a deposit request to maintain history.
       allow delete: if false; 
     }
 
      match /withdrawals/{withdrawalId} {
-      // Admin can list documents where status is 'pending'.
-      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
-      
-      // An admin or the owner can get a specific withdrawal request.
-      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
-
+      // Admin can read all withdrawal documents
+      allow read: if isAdmin();
       // A user can create their own withdrawal request.
       allow create: if request.auth.uid == request.resource.data.userId;
-      
       // Only an admin can update (approve/reject) a withdrawal request.
       allow update: if isAdmin();
-
       // No one can delete a withdrawal request to maintain history.
       allow delete: if false;
      }

@@ -184,7 +184,6 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
     const { firestore } = useFirebase();
     const { toast } = useToast();
 
-    // The query now EXACTLY matches the security rule
     const depositsRef = useMemoFirebase(() => {
       if (!firestore) return null;
       return query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
@@ -274,7 +273,6 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
     const { firestore } = useFirebase();
     const { toast } = useToast();
 
-    // The query now EXACTLY matches the security rule
     const withdrawalsRef = useMemoFirebase(() => {
       if (!firestore) return null;
       return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
@@ -427,3 +425,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    

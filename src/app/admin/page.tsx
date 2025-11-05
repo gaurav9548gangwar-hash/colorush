@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -159,7 +158,6 @@ export default function AdminPage() {
                         <TableRow>
                         <TableHead>User</TableHead>
                         <TableHead>Email ID</TableHead>
-                        <TableHead>Password</TableHead>
                         <TableHead>Balance</TableHead>
                         <TableHead>Join Date</TableHead>
                         <TableHead className='text-right'>Actions</TableHead>
@@ -173,7 +171,6 @@ export default function AdminPage() {
                             <div className="text-sm text-muted-foreground">{u.phone}</div>
                             </TableCell>
                             <TableCell>{u.emailId}</TableCell>
-                            <TableCell>{u.password || 'N/A'}</TableCell>
                             <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
                             <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                             <TableCell className="text-right">

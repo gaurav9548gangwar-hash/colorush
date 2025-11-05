@@ -185,10 +185,10 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
     const { firestore, auth } = useFirebase();
     const { toast } = useToast();
 
-    // Simpler query without orderBy to avoid complex indexing issues with rules.
+    // Query for pending deposits, matching the security rule.
     const depositsRef = useMemoFirebase(() => {
       if (!firestore || !auth?.currentUser) return null;
-      return query(collection(firestore, 'deposits'), where('status', '==', 'pending'))
+      return query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
     }, [firestore, auth, keyForRefresh]);
 
     const { data: deposits, isLoading, error } = useCollection<DepositRequest>(depositsRef);
@@ -287,10 +287,10 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
     const { firestore, auth } = useFirebase();
     const { toast } = useToast();
 
-    // Simpler query without orderBy
+    // Query for pending withdrawals, matching the security rule.
     const withdrawalsRef = useMemoFirebase(() => {
       if (!firestore || !auth?.currentUser) return null;
-      return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'))
+      return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
     },[firestore, auth, keyForRefresh]);
     
     const { data: withdrawals, isLoading, error } = useCollection<WithdrawalRequest>(withdrawalsRef);

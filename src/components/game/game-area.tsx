@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CountdownTimer } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
@@ -22,6 +22,14 @@ const getWinningColor = (num: number): BetColor => {
   if ([1, 3, 7, 9].includes(num)) return 'green'
   return 'orange'
 }
+
+const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M22 2L11 13" />
+        <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+    </svg>
+);
+
 
 export function GameArea() {
   const { firestore, user } = useFirebase()
@@ -272,6 +280,17 @@ export function GameArea() {
           </TabsContent>
         </Tabs>
       </CardContent>
+      <CardFooter className="flex-col items-center justify-center pt-4 border-t">
+        <p className="text-sm text-muted-foreground">
+          Kisi bhi samasya ke liye, aap humse Telegram par sampark kar sakte hain.
+        </p>
+        <Button variant="link" asChild className="mt-1">
+          <a href="https://t.me/Tirangaavingo" target="_blank" rel="noopener noreferrer">
+            <TelegramIcon className="mr-2 h-4 w-4" />
+            @Tirangaavingo
+          </a>
+        </Button>
+      </CardFooter>
     </Card>
   )
 }

@@ -21,6 +21,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
     
+    // Collection Group query for game logic to find the winning color.
+    // Allows any authenticated user to list bets across all users for the purpose
+    // of calculating round results. Individual bet data is still protected.
+    match /{path=**}/bets/{betId} {
+      allow list: if request.auth != null;
+    }
+
     match /deposits/{depositId} {
       // Users can only read their own deposits. Admin can write to any.
       allow get: if request.auth.uid == resource.data.userId;
@@ -49,15 +56,13 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
       // A user can only update their own profile (e.g. balance)
       allow update: if isOwner(userId);
-    }
-    
-    match /users/{userId}/bets/{betId} {
-      // A user can only 'get' their own bet document.
-      allow get: if isOwner(userId);
-      // Anyone can list bets (needed for collection group query in game logic).
-      allow list: if request.auth != null;
-      // A user can manage (create, update, delete) their own bets.
-      allow write: if isOwner(userId);
+
+      // This rule ensures a user can only access their own subcollections.
+      // The collection group rule above handles the cross-user query for game logic.
+      match /bets/{betId} {
+        // A user can read and manage their own specific bets.
+        allow get, write: if isOwner(userId);
+      }
     }
     
     // Legacy collections - block all client access

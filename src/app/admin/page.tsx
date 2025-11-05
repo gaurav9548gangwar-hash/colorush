@@ -336,7 +336,9 @@ export default function AdminPage() {
                                         <TableCell>INR {d.amount.toFixed(2)}</TableCell>
                                         <TableCell>
                                             {d.screenshotUrl ? (
-                                                <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View</a>
+                                                <a href={d.screenshotUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                                    <img src={d.screenshotUrl} alt="Deposit Screenshot" className="h-16 w-16 object-cover rounded-md" />
+                                                </a>
                                             ) : d.status === 'pending_upload' ? (
                                                 <span className="text-muted-foreground text-xs">Uploading...</span>
                                             ) : (

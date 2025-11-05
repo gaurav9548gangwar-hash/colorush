@@ -35,10 +35,12 @@ service cloud.firestore {
     match /bets/{betId} {
       // Users can create their own bets.
       allow create: if request.auth.uid == request.resource.data.userId;
-      // Users can list their own bets for the 'My Bets' table.
-      allow list: if request.auth != null && request.query.where[0][2] == request.auth.uid;
-      // Direct reads, updates, and deletes by users are not allowed.
-      allow read, update, delete: if false;
+      // Users can only read bets where their userId matches. This covers all list queries.
+      allow read: if request.auth.uid == resource.data.userId;
+      // Direct updates and deletes by users are not allowed.
+      allow update, delete: if false;
+      // List is covered by the read rule above.
+      allow list: if false;
     }
 
     // Legacy collections - block all client access

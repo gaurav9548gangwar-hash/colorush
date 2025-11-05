@@ -18,7 +18,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
 
   const betsRef = useMemoFirebase(
     () =>
-      firestore
+      firestore && userId
         ? query(
             collection(firestore, 'bets'),
             where('userId', '==', userId),

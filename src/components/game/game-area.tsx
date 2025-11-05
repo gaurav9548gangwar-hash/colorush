@@ -4,12 +4,11 @@ import { useState, useCallback, useEffect } from "react";
 import { Button } from "../ui/button";
 import CountdownTimer from "./countdown-timer";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { collection, doc, updateDoc, query, orderBy, limit, getDoc, writeBatch, getDocs, where, Timestamp, addDoc } from "firebase/firestore";
+import { collection, doc, updateDoc, query, where, getDocs, writeBatch, getDoc, addDoc, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { GameResult, User, Bet } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-
 
 type BetSelection = {
   type: 'color' | 'number' | 'size' | null;

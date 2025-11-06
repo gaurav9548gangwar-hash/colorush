@@ -38,14 +38,14 @@ export function Wallet() {
         <p className="text-xs text-muted-foreground">
           Your available balance
         </p>
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
           <Button size="sm" variant="outline" className="flex-1" onClick={() => router.push('/recharge')}>
              <Upload className="mr-2 h-4 w-4" /> Recharge
           </Button>
           <Button size="sm" variant="outline" className="flex-1" onClick={() => router.push('/withdraw')}>
             <Download className="mr-2 h-4 w-4" /> Withdraw
           </Button>
-           <Button size="sm" variant="outline" className="flex-1 md:col-span-3" onClick={() => router.push('/wallet-history')}>
+           <Button size="sm" variant="outline" className="flex-1 col-span-2 md:col-span-1" onClick={() => router.push('/wallet-history')}>
             <History className="mr-2 h-4 w-4" /> Payment History
           </Button>
         </div>

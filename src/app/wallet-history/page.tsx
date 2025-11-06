@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo } from 'react'
-import { collection, query, where, orderBy, type Timestamp } from 'firebase/firestore'
+import { useMemo, useEffect } from 'react'
+import { collection, query, where, type Timestamp } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import { useCollection } from '@/firebase/firestore/use-collection'
 import type { DepositRequest, WithdrawalRequest } from '@/lib/types'
@@ -22,7 +22,6 @@ const formatDate = (timestamp: Timestamp | Date | string | undefined) => {
 
 function DepositHistoryTab({ userId }: { userId: string }) {
     const { firestore } = useFirebase()
-    // Removed orderBy from the query to simplify it and avoid complex index/rules issues.
     const depositsRef = useMemoFirebase(
         () => firestore ? query(collection(firestore, 'deposits'), where('userId', '==', userId)) : null,
         [firestore, userId]
@@ -37,13 +36,12 @@ function DepositHistoryTab({ userId }: { userId: string }) {
         }
     }
 
-    // Manual client-side sorting as a permanent fix for the permission issue.
     const sortedDeposits = useMemo(() => {
         if (!deposits) return [];
         return [...deposits].sort((a, b) => {
             const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
             const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-            return dateB - dateA; // Sort descending (newest first)
+            return dateB - dateA;
         });
     }, [deposits]);
 
@@ -78,7 +76,6 @@ function DepositHistoryTab({ userId }: { userId: string }) {
 
 function WithdrawalHistoryTab({ userId }: { userId: string }) {
     const { firestore } = useFirebase()
-    // Removed orderBy from the query to simplify it and avoid complex index/rules issues.
     const withdrawalsRef = useMemoFirebase(
         () => firestore ? query(collection(firestore, 'withdrawals'), where('userId', '==', userId)) : null,
         [firestore, userId]
@@ -93,13 +90,12 @@ function WithdrawalHistoryTab({ userId }: { userId: string }) {
         }
     }
 
-    // Manual client-side sorting as a permanent fix for the permission issue.
     const sortedWithdrawals = useMemo(() => {
         if (!withdrawals) return [];
         return [...withdrawals].sort((a, b) => {
             const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
             const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-            return dateB - dateA; // Sort descending (newest first)
+            return dateB - dateA;
         });
     }, [withdrawals]);
 
@@ -137,13 +133,15 @@ export default function WalletHistoryPage() {
     const { user, isUserLoading } = useFirebase()
     const router = useRouter()
 
-    if (isUserLoading) {
-        return <div className="flex items-center justify-center min-h-screen">Loading...</div>
-    }
-
-    if (!user) {
+     useEffect(() => {
+      if (!isUserLoading && !user) {
         router.replace('/login')
-        return null
+      }
+    }, [isUserLoading, user, router])
+
+
+    if (isUserLoading || !user) {
+        return <div className="flex items-center justify-center min-h-screen">Loading...</div>
     }
 
     return (
@@ -156,7 +154,7 @@ export default function WalletHistoryPage() {
                              <Button variant="ghost" size="icon" className="absolute left-0" onClick={() => router.back()}>
                                 <ArrowLeft />
                             </Button>
-                            <CardTitle className="text-center">Payment History</CardTitle>
+                            <CardTitle>Payment History</CardTitle>
                         </div>
                         <CardDescription className="text-center">View your deposit and withdrawal history.</CardDescription>
                     </CardHeader>

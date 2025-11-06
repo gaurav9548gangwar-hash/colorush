@@ -37,7 +37,7 @@ service cloud.firestore {
       allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
       
       // An admin or the owner can get a specific deposit request.
-      allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
+      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
 
       // A user can create their own deposit request.
       allow create: if request.auth.uid == request.resource.data.userId;
@@ -54,7 +54,7 @@ service cloud.firestore {
       allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
       
       // An admin or the owner can get a specific withdrawal request.
-      allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
+      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
 
       // A user can create their own withdrawal request.
       allow create: if request.auth.uid == request.resource.data.userId;

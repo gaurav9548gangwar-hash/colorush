@@ -2,7 +2,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { collection, query, where, limit } from 'firebase/firestore'
+import { collection, query, where, limit, orderBy } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import { useCollection } from '@/firebase/firestore/use-collection'
 import type { Bet } from '@/lib/types'
@@ -22,6 +22,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
         ? query(
             collection(firestore, 'bets'),
             where('userId', '==', userId),
+            orderBy('createdAt', 'desc'),
             limit(50)
           )
         : null,
@@ -29,16 +30,6 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   )
 
   const { data: bets, isLoading } = useCollection<Bet>(betsRef)
-
-  const sortedBets = useMemo(() => {
-    if (!bets) return []
-    // Sort on the client-side to avoid complex Firestore indexes
-    return bets.sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-        return dateB.getTime() - dateA.getTime();
-    });
-  }, [bets]);
 
   const renderTarget = (bet: Bet) => {
     const baseClasses = "px-2 py-1 rounded-md text-xs font-bold text-white"
@@ -70,7 +61,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
     return <p className="text-center py-4">Loading your bets...</p>
   }
 
-  if (!sortedBets || sortedBets.length === 0) {
+  if (!bets || bets.length === 0) {
     return <p className="text-center py-4 text-muted-foreground">You haven't placed any bets yet.</p>
   }
 
@@ -85,9 +76,9 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedBets.map(bet => (
+          {bets.map(bet => (
             <TableRow key={bet.id}>
-              <TableCell>{bet.roundId.substring(0, 5)}...</TableCell>
+              <TableCell>{bet.roundId.substring(9, 13)}</TableCell>
               <TableCell>{renderTarget(bet)}</TableCell>
               <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
               <TableCell className="text-right">{renderStatus(bet)}</TableCell>

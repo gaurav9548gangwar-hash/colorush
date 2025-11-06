@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -7,8 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CountdownTimer } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
 import { useFirebase } from '@/firebase'
-import type { Bet, BetColor, BetSize, BetTarget, GameResult } from '@/lib/types'
-import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment } from 'firebase/firestore'
+import type { Bet, BetColor, BetSize, GameResult } from '@/lib/types'
+import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment, query, where, getDocs } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
 import { PastResultsTab } from './past-results-tab'
 import { MyBetsTab } from './my-bets-tab'
@@ -39,13 +40,11 @@ export function GameArea() {
   const [isBettingLocked, setIsBettingLocked] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
-  const [currentRoundBets, setCurrentRoundBets] = useState<Omit<Bet, 'id'>[]>([]);
   
   const handleNewRound = useCallback(() => {
     setIsProcessing(false)
     setIsBettingLocked(false)
     setGameResult(null)
-    setCurrentRoundBets([])
     const newRoundId = new Date().getTime().toString();
     setCurrentRoundId(newRoundId)
   }, [])
@@ -54,20 +53,23 @@ export function GameArea() {
     handleNewRound()
   }, [handleNewRound])
 
-  const onBetPlaced = (bet: Omit<Bet, 'id'>) => {
-    setCurrentRoundBets(prevBets => [...prevBets, bet]);
-  };
-
   const handleRoundEnd = useCallback(async () => {
     if (!firestore || !currentRoundId) return;
 
     setIsBettingLocked(true);
     setIsProcessing(true);
 
-    const FAIR_PLAY_CHANCE = 0.3; // 30% chance for a round that favors users
-    const betsToProcess = [...currentRoundBets];
+    // Fetch all pending bets for the current round
+    const betsQuery = query(
+        collection(firestore, 'bets'), 
+        where('roundId', '==', currentRoundId),
+        where('status', '==', 'pending')
+    );
+    const pendingBetsSnapshot = await getDocs(betsQuery);
+    const betsToProcess: Bet[] = pendingBetsSnapshot.docs.map(doc => doc.data() as Bet);
+    
 
-    // --- STRATEGIC LOGIC (Minimize Payouts or Fair Play) ---
+    const FAIR_PLAY_CHANCE = 0.3; 
     const potentialPayouts: { [num: number]: number } = {};
     const winnersByNumber: { [num: number]: Set<string> } = {};
 
@@ -102,7 +104,6 @@ export function GameArea() {
 
     if (Math.random() < FAIR_PLAY_CHANCE) {
         // --- FAIR PLAY LOGIC ---
-        // Find the number that makes the most unique users win.
         let maxWinners = -1;
         let bestNumbersForFairPlay: number[] = [];
         
@@ -116,7 +117,6 @@ export function GameArea() {
             }
         }
         
-        // If there's a tie, pick the one with the lowest payout among the tied numbers
         if (bestNumbersForFairPlay.length > 1) {
             let minPayout = Infinity;
             let finalBestNumber = bestNumbersForFairPlay[0];
@@ -128,7 +128,7 @@ export function GameArea() {
             }
             winningNumber = finalBestNumber;
         } else {
-             winningNumber = bestNumbersForFairPlay[0];
+             winningNumber = bestNumbersForFairPlay.length > 0 ? bestNumbersForFairPlay[0] : Math.floor(Math.random() * 10)
         }
 
     } else {
@@ -144,7 +144,7 @@ export function GameArea() {
                 bestNumbers.push(i);
             }
         }
-        winningNumber = bestNumbers[Math.floor(Math.random() * bestNumbers.length)];
+        winningNumber = bestNumbers.length > 0 ? bestNumbers[Math.floor(Math.random() * bestNumbers.length)] : Math.floor(Math.random() * 10);
     }
 
 
@@ -172,8 +172,8 @@ export function GameArea() {
   
         const userPayouts: { [userId: string]: number } = {};
 
-        for (const bet of currentRoundBets) {
-            const betDocRef = doc(collection(firestore, 'bets'));
+        for (const bet of betsToProcess) {
+            const betDocRef = doc(firestore, 'bets', bet.id);
             let hasWon = false;
             let payout = 0;
     
@@ -182,54 +182,48 @@ export function GameArea() {
                 payout = bet.amount * 9;
             } else if (bet.type === 'color' && bet.target === resultData.winningColor) {
                 hasWon = true;
-                payout = bet.amount * 2; // All colors pay 2x
+                payout = bet.amount * 2;
             } else if (bet.type === 'size' && bet.target === resultData.winningSize) {
                 hasWon = true;
                 payout = bet.amount * 2;
             }
     
-            batch.set(betDocRef, {
-                ...bet,
-                id: betDocRef.id,
+            batch.update(betDocRef, {
                 status: hasWon ? 'win' : 'loss',
                 payout,
-                createdAt: serverTimestamp(),
             });
     
             if (hasWon) {
                 userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
             }
         }
-        
-        await batch.commit();
 
+        // Add user payouts to the same batch
         for (const userId in userPayouts) {
             if (userPayouts[userId] > 0) {
-                 const userRef = doc(firestore, "users", userId);
-                 try {
-                     await updateDoc(userRef, {
-                         balance: increment(userPayouts[userId])
-                     });
-                 } catch (e) {
-                      const contextualError = new FirestorePermissionError({
-                         path: userRef.path,
-                         operation: 'update',
-                         requestResourceData: { balance: `increment(${userPayouts[userId]})` },
-                      });
-                      errorEmitter.emit('permission-error', contextualError);
-                      console.error(`Failed to update balance for user ${userId}:`, e);
-                      toast({ variant: "destructive", title: "Balance Update Error", description: `Could not update balance for user ${userId}.` })
-                 }
+                const userRef = doc(firestore, "users", userId);
+                batch.update(userRef, { balance: increment(userPayouts[userId]) });
             }
         }
+        
+        await batch.commit();
 
     } catch (error) {
       console.error("Error saving round results to DB: ", error);
       toast({ variant: "destructive", title: "Save Error", description: "Could not save round results." });
+      
+       if (error instanceof Error && (error as any).code === 'permission-denied') {
+            const contextualError = new FirestorePermissionError({
+                path: `bets or game_rounds`,
+                operation: 'write',
+                requestResourceData: { info: "Batch write for round end processing failed." },
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        }
     } finally {
         setIsProcessing(false);
     }
-  }, [firestore, currentRoundId, toast, currentRoundBets]);
+  }, [firestore, currentRoundId, toast]);
 
   const renderResult = () => {
     if (!gameResult) {
@@ -284,18 +278,18 @@ export function GameArea() {
         ) : (
           <div className="space-y-4 animate-in fade-in-20">
             <div className="grid grid-cols-3 gap-2">
-              <PlaceBetDialog onBetPlaced={onBetPlaced} type="color" target="green" roundId={currentRoundId} disabled={isBettingLocked} />
-              <PlaceBetDialog onBetPlaced={onBetPlaced} type="color" target="white" roundId={currentRoundId} disabled={isBettingLocked} />
-              <PlaceBetDialog onBetPlaced={onBetPlaced} type="color" target="orange" roundId={currentRoundId} disabled={isBettingLocked} />
+              <PlaceBetDialog type="color" target="green" roundId={currentRoundId} disabled={isBettingLocked} />
+              <PlaceBetDialog type="color" target="white" roundId={currentRoundId} disabled={isBettingLocked} />
+              <PlaceBetDialog type="color" target="orange" roundId={currentRoundId} disabled={isBettingLocked} />
             </div>
             <div className="grid grid-cols-5 gap-2">
               {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                <PlaceBetDialog onBetPlaced={onBetPlaced} key={num} type="number" target={num} roundId={currentRoundId} disabled={isBettingLocked} />
+                <PlaceBetDialog key={num} type="number" target={num} roundId={currentRoundId} disabled={isBettingLocked} />
               ))}
             </div>
             <div className="grid grid-cols-2 gap-2">
-                <PlaceBetDialog onBetPlaced={onBetPlaced} type="size" target="small" roundId={currentRoundId} disabled={isBettingLocked} />
-                <PlaceBetDialog onBetPlaced={onBetPlaced} type="size" target="big" roundId={currentRoundId} disabled={isBettingLocked} />
+                <PlaceBetDialog type="size" target="small" roundId={currentRoundId} disabled={isBettingLocked} />
+                <PlaceBetDialog type="size" target="big" roundId={currentRoundId} disabled={isBettingLocked} />
             </div>
           </div>
         )}

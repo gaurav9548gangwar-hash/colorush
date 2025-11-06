@@ -18,7 +18,7 @@ import { useFirebase } from '@/firebase'
 import { useToast } from '@/hooks/use-toast'
 import type { Bet, BetColor, BetSize, BetTarget, User } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { doc, getDoc, increment, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, increment, updateDoc, writeBatch, collection, serverTimestamp, addDoc } from 'firebase/firestore'
 import { FirestorePermissionError } from '@/firebase/errors'
 import { errorEmitter } from '@/firebase/error-emitter'
 
@@ -27,12 +27,11 @@ interface PlaceBetDialogProps {
   target: BetTarget
   roundId: string
   disabled: boolean
-  onBetPlaced: (bet: Omit<Bet, 'id'>) => void
 }
 
 const amountPresets = [10, 20, 50, 100]
 
-export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }: PlaceBetDialogProps) {
+export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDialogProps) {
   const { firestore, user } = useFirebase()
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
@@ -73,6 +72,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
     setIsSubmitting(true)
     
     const userRef = doc(firestore, 'users', user.uid);
+    const betsRef = collection(firestore, 'bets');
 
     try {
       // Step 1: Get the user's current balance from Firestore
@@ -86,19 +86,23 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
 
       // Step 2: Check if the balance is sufficient
       if (currentBalance < amount) {
-        toast({ variant: 'destructive', title: 'Insufficient Balance', description: 'You do not have enough funds to place this bet.' });
+        toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your balance is too low. You need at least INR ${amount}.` });
         setIsSubmitting(false);
         setOpen(false);
         return;
       }
       
-      // Step 3: Deduct balance
-      await updateDoc(userRef, {
+      const batch = writeBatch(firestore);
+
+      // Step 3: Deduct balance from user document
+      batch.update(userRef, {
         balance: increment(-amount)
       });
-
-      // Step 4: If deduction is successful, place the bet locally
-      const betData = {
+      
+      // Step 4: Create the new bet document with 'pending' status
+      const newBetRef = doc(betsRef); // Create a new document reference with a unique ID
+      const betData: Bet = {
+        id: newBetRef.id,
         userId: user.uid,
         roundId,
         amount,
@@ -106,9 +110,13 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
         type,
         status: 'pending',
         payout: 0,
-      } as Omit<Bet, 'id'>
+        createdAt: serverTimestamp(),
+      }
+      batch.set(newBetRef, betData);
 
-      onBetPlaced(betData);
+      // Step 5: Commit the batch
+      await batch.commit();
+
       toast({ title: 'Bet Placed!', description: `You bet INR ${amount} on ${target}. Good luck!` })
       setOpen(false)
 

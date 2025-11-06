@@ -4,7 +4,7 @@ import "./globals.css";
 import { FirebaseClientProvider } from "@/firebase/client-provider";
 
 export const metadata: Metadata = {
-  title: "Tiranga Wingo",
+  title: "ColoRush",
   description: "Color prediction game",
 };
 

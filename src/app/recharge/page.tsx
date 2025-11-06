@@ -183,7 +183,7 @@ export default function RechargePage() {
                   </Button>
               </form>
               <Button variant="outline" className="w-full" asChild>
-                <a href="https://t.me/Tirangaavingo" target="_blank" rel="noopener noreferrer">
+                <a href="https://t.me/ColoRushSupport" target="_blank" rel="noopener noreferrer">
                   <TelegramIcon className="mr-2 h-4 w-4" />
                   Contact us on Telegram
                 </a>

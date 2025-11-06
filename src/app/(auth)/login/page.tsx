@@ -43,7 +43,7 @@ export default function LoginPage() {
         return
     }
 
-    const emailId = `${phone}@tiranga.in`
+    const emailId = `${phone}@colorush.in`
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
@@ -88,7 +88,7 @@ export default function LoginPage() {
     e.preventDefault()
     if (!auth) return
     setIsSubmitting(true)
-    const emailId = `${loginPhone}@tiranga.in`
+    const emailId = `${loginPhone}@colorush.in`
     
     try {
         await signInWithEmailAndPassword(auth, emailId, loginPassword)
@@ -105,7 +105,7 @@ export default function LoginPage() {
     <Card className="w-full max-w-md shadow-2xl">
        <CardHeader className="p-0 overflow-hidden">
         <div className="bg-gradient-to-r from-orange-500 via-white-500 to-green-500 p-8 text-center">
-            <CardTitle className="text-4xl font-extrabold text-primary-foreground drop-shadow-lg">Tiranga</CardTitle>
+            <CardTitle className="text-4xl font-extrabold text-primary-foreground drop-shadow-lg">ColoRush</CardTitle>
         </div>
       </CardHeader>
       <CardContent className="pt-6">

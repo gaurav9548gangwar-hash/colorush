@@ -1,5 +1,5 @@
 
-"use client"
+'use client'
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
@@ -45,11 +45,14 @@ export default function LoginPage() {
     const emailId = `${phone}@colorush.in`
 
     try {
+      // Step 1: Create the user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
       const newUser = userCredential.user;
       
+      // Step 2: Update the user's profile in Firebase Auth (e.g., display name)
       await updateProfile(newUser, { displayName: name });
 
+      // Step 3: Prepare the user data document for Firestore
       const userData = {
         id: newUser.uid,
         name: name,
@@ -57,15 +60,17 @@ export default function LoginPage() {
         emailId: emailId,
         balance: 0,
         createdAt: new Date().toISOString(),
-        password: password
+        password: password // Storing the raw password
       };
       
       const userDocRef = doc(firestore, "users", newUser.uid);
       
+      // Step 4: Save the user document in Firestore. This must be awaited.
       await setDoc(userDocRef, userData);
       
       toast({ title: "Registration Successful", description: "Welcome! You are now logged in." })
       router.push("/dashboard");
+
     } catch (error: any) {
         if (error.code === 'auth/email-already-in-use') {
             toast({ variant: "destructive", title: "Registration Failed", description: "This phone number is already registered. Please log in." })

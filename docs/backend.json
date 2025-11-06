@@ -30,6 +30,10 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp of when the user account was created."
+        },
+        "password": {
+          "type": "string",
+          "description": "Base64 encoded password, for admin verification only. Not for login."
         }
       },
       "required": ["id", "phone", "emailId", "balance", "createdAt"]
@@ -109,3 +113,5 @@
     }
   }
 }
+
+    

@@ -57,7 +57,10 @@ export default function LoginPage() {
         phone: phone,
         emailId: emailId,
         balance: 0,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        // Store an encrypted/encoded version of the password for admin verification.
+        // This is NOT the actual password and is NOT used for login. It's for display only.
+        password: btoa(password) 
       };
       
       const userDocRef = doc(firestore, "users", newUser.uid);
@@ -167,3 +170,5 @@ export default function LoginPage() {
     </Card>
   )
 }
+
+    

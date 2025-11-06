@@ -1,3 +1,4 @@
+
 import { Timestamp } from "firebase/firestore";
 
 export type User = {
@@ -7,6 +8,7 @@ export type User = {
   emailId: string;
   balance: number;
   createdAt: string;
+  password?: string; // Stored encoded, for admin verification only.
 };
 
 export type BetColor = "green" | "white" | "orange";
@@ -55,3 +57,5 @@ export interface WithdrawalRequest {
     status: 'pending' | 'approved' | 'rejected';
     createdAt: Timestamp;
 }
+
+    

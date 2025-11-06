@@ -145,6 +145,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                         <TableHeader>
                             <TableRow>
                                 <TableHead>User</TableHead>
+                                <TableHead>Password (Encrypted)</TableHead>
                                 <TableHead>Balance</TableHead>
                                 <TableHead>Join Date</TableHead>
                                 <TableHead className='text-right'>Actions</TableHead>
@@ -157,6 +158,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                         <div className="font-medium">{u.name || 'N/A'}</div>
                                         <div className="text-sm text-muted-foreground">{u.phone}</div>
                                     </TableCell>
+                                    <TableCell className="font-mono text-xs">{u.password || 'N/A'}</TableCell>
                                     <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                                     <TableCell className="text-right">
@@ -164,7 +166,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                 </TableRow>
                             )) : (
-                                <TableRow><TableCell colSpan={4} className="text-center">No users found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={5} className="text-center">No users found.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>

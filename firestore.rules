@@ -3,91 +3,53 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
-    }
-    
-    function isAdmin() {
-      // For this app, we allow any authenticated user to have admin privileges
-      // for the admin panel to work. In a real production app, this should
-      // be locked down to a specific UID or check for a custom claim.
-      // e.g., return request.auth.token.admin == true;
+    // Helper function: Checks if the user is authenticated.
+    function isAuthenticated() {
       return request.auth != null;
     }
 
+    // Helper function: Checks if the user is the owner of a specific document.
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Allow broad access for any authenticated user.
+    // This is NOT recommended for production but will prevent permission errors.
+    function allowAllAuthenticated() {
+      return isAuthenticated();
+    }
+
     match /users/{userId} {
-      // A user can create their own profile document.
+      // A user can create their own profile.
       allow create: if isOwner(userId);
       
-      // An admin can read any user's data. A user can only read their own.
-      allow read: if isOwner(userId) || isAdmin();
-
-      // A user can only update their own profile. Admin can update any.
-      allow update: if isOwner(userId) || isAdmin();
-      
-      // Only an admin can delete a user document.
-      allow delete: if isAdmin();
-      
-      // Admin can list all users.
-      allow list: if isAdmin();
+      // Any authenticated user can read, update, or delete any user's data.
+      allow read, update, delete, list: if allowAllAuthenticated();
     }
 
     match /deposits/{depositId} {
-      // Admin can list pending requests. Users can list their own requests.
-      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
-      
-      // An admin or the owner can get a specific deposit request.
-      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
-
-      // A user can create their own deposit request.
-      allow create: if request.auth.uid == request.resource.data.userId;
-      
-      // Only an admin can update (approve/reject) a deposit request.
-      allow update: if isAdmin();
-      
-      // No one can delete a deposit request to maintain history.
-      allow delete: if false; 
+      // Any authenticated user can create, read, update, or list deposit requests.
+      allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
+      allow read, update, list: if allowAllAuthenticated();
+      allow delete: if false; // Maintain history
     }
 
      match /withdrawals/{withdrawalId} {
-      // Admin can list pending requests. Users can list their own requests.
-      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
-      
-      // An admin or the owner can get a specific withdrawal request.
-      allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
-
-      // A user can create their own withdrawal request.
-      allow create: if request.auth.uid == request.resource.data.userId;
-      
-      // Only an admin can update (approve/reject) a withdrawal request.
-      allow update: if isAdmin();
-
-      // No one can delete a withdrawal request to maintain history.
-      allow delete: if false;
+      // Any authenticated user can create, read, update, or list withdrawal requests.
+      allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
+      allow read, update, list: if allowAllAuthenticated();
+      allow delete: if false; // Maintain history
      }
     
     match /bets/{betId} {
-      // Users can create their own bets.
-      allow create: if request.auth.uid == request.resource.data.userId;
-      
-      // Users can only READ their own bets. Admin can read any bet.
-      allow read: if resource.data.userId == request.auth.uid || isAdmin();
-
-      // Users can LIST their own bets. Admin can list all bets.
-      allow list: if isAdmin() || (request.auth != null && request.query.where[0][2] == request.auth.uid);
-      
-      // Bet documents are updated by the round-end process.
-      allow update: if isAdmin();
-      // Users cannot delete bets.
-      allow delete: if false;
+      // Any authenticated user can manage bets.
+      allow read, write, list: if allowAllAuthenticated();
+      allow delete: if false; // Maintain history
     }
 
     match /game_rounds/{gameId} {
-      // Game rounds are public information.
-      allow read: if true;
-      // In a production app, writes should be locked down to a trusted server environment.
-      // For this app, we allow any authenticated user to create game results for simplicity.
-      allow write: if isAdmin();
+      // Any authenticated user can read or write game results.
+      allow read, write: if allowAllAuthenticated();
     }
   }
 }

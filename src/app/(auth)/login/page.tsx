@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth"
 import { useFirebase } from "@/firebase"
@@ -47,9 +46,9 @@ export default function LoginPage() {
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
-      const newUser = userCredential.user
+      const newUser = userCredential.user;
+      
       await updateProfile(newUser, { displayName: name });
-
 
       const userData = {
         id: newUser.uid,
@@ -58,21 +57,12 @@ export default function LoginPage() {
         emailId: emailId,
         balance: 0,
         createdAt: new Date().toISOString(),
-        // Store an encrypted/encoded version of the password for admin verification.
-        // This is NOT the actual password and is NOT used for login. It's for display only.
         password: btoa(password) 
       };
       
       const userDocRef = doc(firestore, "users", newUser.uid);
       
-      setDoc(userDocRef, userData).catch(error => {
-         const contextualError = new FirestorePermissionError({
-            path: userDocRef.path,
-            operation: 'create',
-            requestResourceData: userData,
-        });
-        errorEmitter.emit('permission-error', contextualError);
-      })
+      await setDoc(userDocRef, userData);
       
       toast({ title: "Registration Successful", description: "Welcome! You are now logged in." })
       router.push("/dashboard");
@@ -170,5 +160,3 @@ export default function LoginPage() {
     </Card>
   )
 }
-
-    

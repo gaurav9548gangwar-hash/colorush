@@ -25,7 +25,7 @@ service cloud.firestore {
       // A user can only update their own profile. Admin can update any.
       allow update: if isOwner(userId) || isAdmin();
       
-      // Admin can delete a user document.
+      // Only an admin can delete a user document.
       allow delete: if isAdmin();
       
       // Admin can list all users.

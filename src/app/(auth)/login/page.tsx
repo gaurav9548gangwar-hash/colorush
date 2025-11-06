@@ -3,7 +3,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,6 +14,7 @@ import { doc, setDoc } from "firebase/firestore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { errorEmitter } from "@/firebase/error-emitter"
+import { KeyRound, Phone, User as UserIcon } from "lucide-react"
 
 export default function LoginPage() {
   const [name, setName] = useState("")
@@ -32,7 +33,6 @@ export default function LoginPage() {
     if (!auth || !firestore) return
     setIsSubmitting(true)
 
-    // Validate phone number for 10 digits
     if (!/^\d{10}$/.test(phone)) {
         toast({
             variant: "destructive",
@@ -43,7 +43,6 @@ export default function LoginPage() {
         return
     }
 
-    // Create a unique email-like ID for Firebase Auth from the phone number
     const emailId = `${phone}@tiranga.in`
 
     try {
@@ -61,7 +60,6 @@ export default function LoginPage() {
         createdAt: new Date().toISOString()
       };
       
-      // Save the user data to Firestore
       const userDocRef = doc(firestore, "users", newUser.uid);
       
       setDoc(userDocRef, userData).catch(error => {
@@ -104,62 +102,64 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold text-primary">Tiranga Wingo</CardTitle>
-        <CardDescription>Login or create an account to play</CardDescription>
+    <Card className="w-full max-w-md shadow-2xl">
+       <CardHeader className="p-0 overflow-hidden">
+        <div className="bg-gradient-to-r from-orange-500 via-white-500 to-green-500 p-8 text-center">
+            <CardTitle className="text-4xl font-extrabold text-primary-foreground drop-shadow-lg">Tiranga</CardTitle>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         <Tabs defaultValue="login" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="register">Register</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
-            <form onSubmit={handleLogin} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="login-phone">Phone Number</Label>
-                  <Input id="login-phone" type="tel" placeholder="Your 10-digit phone" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} required />
+            <form onSubmit={handleLogin} className="space-y-6 pt-4">
+              <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input id="login-phone" type="tel" placeholder="10-digit Phone Number" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} required className="pl-10" />
               </div>
-              <div className="space-y-2">
-                  <Label htmlFor="login-password">Password</Label>
+              <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                   id="login-password"
                   type="password"
-                  placeholder="Enter your password"
+                  placeholder="Password"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   required
+                  className="pl-10"
                   />
               </div>
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
                   {isSubmitting ? "Logging In..." : "Login"}
               </Button>
             </form>
           </TabsContent>
           <TabsContent value="register">
-            <form onSubmit={handleRegister} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                    <Label htmlFor="name">Name</Label>
-                    <Input id="name" type="text" placeholder="Your Name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <form onSubmit={handleRegister} className="space-y-6 pt-4">
+                <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="name" type="text" placeholder="Your Name" value={name} onChange={(e) => setName(e.target.value)} required className="pl-10"/>
                 </div>
-                <div className="space-y-2">
-                    <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" type="tel" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} required title="Phone number must be 10 digits"/>
+                <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="phone" type="tel" placeholder="10-digit Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} required title="Phone number must be 10 digits" className="pl-10"/>
                 </div>
-                <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input id="password" type="password" placeholder="Create a password (min. 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}/>
+                <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="password" type="password" placeholder="Create Password (min. 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="pl-10"/>
                 </div>
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
                     {isSubmitting ? "Creating Account..." : "Create Account"}
                 </Button>
             </form>
           </TabsContent>
         </Tabs>
       </CardContent>
-       <CardFooter className="flex flex-col text-xs text-center">
-        <p className="text-muted-foreground">By continuing, you agree to our Terms of Service.</p>
+       <CardFooter className="flex flex-col text-xs text-center pt-4">
+        <p className="text-muted-foreground">By continuing, you agree to our Terms of Service & Privacy Policy.</p>
         <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-2">
             Admin Login
         </Button>

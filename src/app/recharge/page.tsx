@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Copy } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
@@ -52,6 +52,14 @@ export default function RechargePage() {
         router.replace('/login')
       }
   }, [isUserLoading, user, router]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(UPI_ID);
+    toast({
+        title: 'UPI ID Copied!',
+        description: 'You can now paste it in your UPI app.',
+    })
+  }
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -135,7 +143,12 @@ export default function RechargePage() {
                 <AlertTitle className="font-bold">Payment Instructions</AlertTitle>
                 <AlertDescription className="space-y-2">
                     <p>1. Copy the UPI ID below and pay using any UPI app (PhonePe, GPay, etc.).</p>
-                    <p className="font-mono bg-muted p-2 rounded-md text-center text-sm">{UPI_ID}</p>
+                    <div className="flex items-center justify-between bg-muted p-2 rounded-md">
+                        <span className="font-mono text-sm text-center flex-1">{UPI_ID}</span>
+                        <Button variant="ghost" size="icon" onClick={handleCopy}>
+                            <Copy className="h-4 w-4" />
+                        </Button>
+                    </div>
                     <p>2. Minimum deposit is <strong>₹{MIN_DEPOSIT}</strong>.</p>
                     <p>3. After payment, copy the Transaction ID and submit the form below.</p>
                 </AlertDescription>

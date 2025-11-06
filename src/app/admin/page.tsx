@@ -85,7 +85,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
           <DialogTitle>Edit Balance for {user.name}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p>Current Balance: <strong>₹{(Number(user.balance) || 0).toFixed(2)}</strong></p>
+          <p>Current Balance: <strong>INR {(Number(user.balance) || 0).toFixed(2)}</strong></p>
           <Label htmlFor="amount">Amount</Label>
           <Input
             id="amount"
@@ -160,7 +160,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                         <div className="text-sm text-muted-foreground">{u.phone}</div>
                                     </TableCell>
                                     <TableCell>{u.emailId}</TableCell>
-                                    <TableCell>₹{(Number(u.balance) || 0).toFixed(2)}</TableCell>
+                                    <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                                     <TableCell className="text-right">
                                         <BalanceDialog user={u} onUpdate={onUpdate} />
@@ -249,7 +249,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                                 <TableRow key={req.id}>
                                     <TableCell>{req.userName}</TableCell>
                                     <TableCell>{req.userPhone}</TableCell>
-                                    <TableCell>₹{req.amount.toFixed(2)}</TableCell>
+                                    <TableCell>INR {req.amount.toFixed(2)}</TableCell>
                                     <TableCell>{req.transactionId}</TableCell>
                                     <TableCell>{formatDate(req.createdAt)}</TableCell>
                                     <TableCell className="text-right space-x-2">
@@ -350,7 +350,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                               <TableRow key={req.id}>
                                   <TableCell>{req.userName}</TableCell>
                                   <TableCell>{req.userPhone}</TableCell>
-                                  <TableCell>₹{req.amount.toFixed(2)}</TableCell>
+                                  <TableCell>INR {req.amount.toFixed(2)}</TableCell>
                                   <TableCell>{req.upiId}</TableCell>
                                   <TableCell>{formatDate(req.createdAt)}</TableCell>
                                   <TableCell className="text-right space-x-2">

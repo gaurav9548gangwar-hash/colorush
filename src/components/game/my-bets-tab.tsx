@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useMemo } from 'react'
@@ -56,9 +57,9 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   const renderStatus = (bet: Bet) => {
       switch(bet.status) {
           case 'win':
-              return <span className='font-bold text-green-500'>+₹{bet.payout.toFixed(2)}</span>
+              return <span className='font-bold text-green-500'>+INR {bet.payout.toFixed(2)}</span>
           case 'loss':
-              return <span className='font-bold text-destructive'>-₹{bet.amount.toFixed(2)}</span>
+              return <span className='font-bold text-destructive'>-INR {bet.amount.toFixed(2)}</span>
           case 'pending':
               return <span className='text-muted-foreground'>Waiting...</span>
       }
@@ -88,7 +89,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
             <TableRow key={bet.id}>
               <TableCell>{bet.roundId.substring(0, 5)}...</TableCell>
               <TableCell>{renderTarget(bet)}</TableCell>
-              <TableCell>₹{bet.amount.toFixed(2)}</TableCell>
+              <TableCell>INR {bet.amount.toFixed(2)}</TableCell>
               <TableCell className="text-right">{renderStatus(bet)}</TableCell>
             </TableRow>
           ))}

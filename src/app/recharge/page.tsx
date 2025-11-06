@@ -69,7 +69,7 @@ export default function RechargePage() {
         toast({
             variant: 'destructive',
             title: 'Invalid Amount',
-            description: `Minimum deposit amount is ₹${MIN_DEPOSIT}.`
+            description: `Minimum deposit amount is INR ${MIN_DEPOSIT}.`
         })
         return
     }
@@ -149,7 +149,7 @@ export default function RechargePage() {
                             <Copy className="h-4 w-4" />
                         </Button>
                     </div>
-                    <p>2. Minimum deposit is <strong>₹{MIN_DEPOSIT}</strong>.</p>
+                    <p>2. Minimum deposit is <strong>INR {MIN_DEPOSIT}</strong>.</p>
                     <p>3. After payment, copy the Transaction ID and submit the form below.</p>
                 </AlertDescription>
             </Alert>

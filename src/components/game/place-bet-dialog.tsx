@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState } from 'react'
@@ -86,7 +87,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
       } as Omit<Bet, 'id'>
 
       onBetPlaced(betData);
-      toast({ title: 'Bet Placed!', description: `You bet ₹${amount} on ${target}. Good luck!` })
+      toast({ title: 'Bet Placed!', description: `You bet INR ${amount} on ${target}. Good luck!` })
       setOpen(false)
 
     } catch (error: any) {
@@ -136,7 +137,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
             <Button variant="outline">Cancel</Button>
           </DialogClose>
           <Button onClick={handlePlaceBet} disabled={isSubmitting}>
-            {isSubmitting ? 'Placing Bet...' : `Bet ₹${amount}`}
+            {isSubmitting ? 'Placing Bet...' : `Bet INR ${amount}`}
           </Button>
         </DialogFooter>
       </DialogContent>

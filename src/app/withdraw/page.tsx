@@ -51,7 +51,7 @@ export default function WithdrawPage() {
         toast({
             variant: 'destructive',
             title: 'Invalid Amount',
-            description: `Minimum withdrawal amount is ₹${MIN_WITHDRAWAL}.`
+            description: `Minimum withdrawal amount is INR ${MIN_WITHDRAWAL}.`
         })
         return
     }
@@ -60,7 +60,7 @@ export default function WithdrawPage() {
          toast({
             variant: 'destructive',
             title: 'Insufficient Balance',
-            description: `You cannot withdraw more than your available balance of ₹${userData.balance.toFixed(2)}.`
+            description: `You cannot withdraw more than your available balance of INR ${userData.balance.toFixed(2)}.`
         })
         return
     }
@@ -133,8 +133,8 @@ export default function WithdrawPage() {
             <Alert variant={userData && userData.balance < MIN_WITHDRAWAL ? 'destructive' : 'default'}>
                 <AlertTitle className="font-bold">Withdrawal Rules</AlertTitle>
                 <AlertDescription>
-                    <p>Minimum withdrawal amount is <strong>₹{MIN_WITHDRAWAL}</strong>.</p>
-                    <p>Your current balance is <strong>₹{(userData?.balance || 0).toFixed(2)}</strong>.</p>
+                    <p>Minimum withdrawal amount is <strong>INR {MIN_WITHDRAWAL}</strong>.</p>
+                    <p>Your current balance is <strong>INR {(userData?.balance || 0).toFixed(2)}</strong>.</p>
                 </AlertDescription>
             </Alert>
             <form onSubmit={handleSubmit} className="space-y-4">

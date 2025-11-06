@@ -34,7 +34,7 @@ service cloud.firestore {
 
     match /deposits/{depositId} {
       // Admin can list pending requests. Users can list their own requests.
-      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && request.query.where[0][2] == request.auth.uid);
+      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
       
       // An admin or the owner can get a specific deposit request.
       allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
@@ -51,7 +51,7 @@ service cloud.firestore {
 
      match /withdrawals/{withdrawalId} {
       // Admin can list pending requests. Users can list their own requests.
-      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && request.query.where[0][2] == request.auth.uid);
+      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
       
       // An admin or the owner can get a specific withdrawal request.
       allow get: if isAdmin() || (request.auth.uid == resource.data.userId);

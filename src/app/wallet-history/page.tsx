@@ -1,0 +1,157 @@
+'use client'
+
+import { useMemo } from 'react'
+import { collection, query, where, orderBy, type Timestamp } from 'firebase/firestore'
+import { useFirebase, useMemoFirebase } from '@/firebase'
+import { useCollection } from '@/firebase/firestore/use-collection'
+import type { DepositRequest, WithdrawalRequest } from '@/lib/types'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Header } from '@/components/game/header'
+
+const formatDate = (timestamp: Timestamp | Date | string | undefined) => {
+    if (!timestamp) return 'N/A';
+    const date = (timestamp as Timestamp)?.toDate ? (timestamp as Timestamp).toDate() : new Date(timestamp as any);
+    return date.toLocaleString();
+}
+
+function DepositHistoryTab({ userId }: { userId: string }) {
+    const { firestore } = useFirebase()
+    const depositsRef = useMemoFirebase(
+        () => firestore ? query(collection(firestore, 'deposits'), where('userId', '==', userId), orderBy('createdAt', 'desc')) : null,
+        [firestore, userId]
+    )
+    const { data: deposits, isLoading, error } = useCollection<DepositRequest>(depositsRef)
+
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case 'approved': return <Badge variant="default" className="bg-green-500">Approved</Badge>
+            case 'rejected': return <Badge variant="destructive">Rejected</Badge>
+            default: return <Badge variant="secondary">Pending</Badge>
+        }
+    }
+
+    if (isLoading) return <p className="text-center py-4">Loading deposit history...</p>
+    if (error) return <p className="text-center text-destructive py-4">Error loading history. Please check permissions.</p>
+    if (!deposits || deposits.length === 0) return <p className="text-center py-4 text-muted-foreground">No deposit history found.</p>
+
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Transaction ID</TableHead>
+                    <TableHead>Date</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {deposits.map(req => (
+                    <TableRow key={req.id}>
+                        <TableCell>INR {req.amount.toFixed(2)}</TableCell>
+                        <TableCell>{getStatusBadge(req.status)}</TableCell>
+                        <TableCell>{req.transactionId}</TableCell>
+                        <TableCell>{formatDate(req.createdAt)}</TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    )
+}
+
+function WithdrawalHistoryTab({ userId }: { userId: string }) {
+    const { firestore } = useFirebase()
+    const withdrawalsRef = useMemoFirebase(
+        () => firestore ? query(collection(firestore, 'withdrawals'), where('userId', '==', userId), orderBy('createdAt', 'desc')) : null,
+        [firestore, userId]
+    )
+    const { data: withdrawals, isLoading, error } = useCollection<WithdrawalRequest>(withdrawalsRef)
+
+     const getStatusBadge = (status: string) => {
+        switch (status) {
+            case 'approved': return <Badge variant="default" className="bg-green-500">Approved</Badge>
+            case 'rejected': return <Badge variant="destructive">Rejected</Badge>
+            default: return <Badge variant="secondary">Pending</Badge>
+        }
+    }
+
+    if (isLoading) return <p className="text-center py-4">Loading withdrawal history...</p>
+    if (error) return <p className="text-center text-destructive py-4">Error loading history. Please check permissions.</p>
+    if (!withdrawals || withdrawals.length === 0) return <p className="text-center py-4 text-muted-foreground">No withdrawal history found.</p>
+
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>UPI ID</TableHead>
+                    <TableHead>Date</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {withdrawals.map(req => (
+                    <TableRow key={req.id}>
+                        <TableCell>INR {req.amount.toFixed(2)}</TableCell>
+                        <TableCell>{getStatusBadge(req.status)}</TableCell>
+                        <TableCell>{req.upiId}</TableCell>
+                        <TableCell>{formatDate(req.createdAt)}</TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    )
+}
+
+
+export default function WalletHistoryPage() {
+    const { user, isUserLoading } = useFirebase()
+    const router = useRouter()
+
+    if (isUserLoading) {
+        return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+    }
+
+    if (!user) {
+        router.replace('/login')
+        return null
+    }
+
+    return (
+        <div className="flex flex-col min-h-screen">
+          <Header />
+          <main className="flex-1 container mx-auto px-4 py-6">
+                <Card>
+                    <CardHeader>
+                        <div className="relative flex items-center justify-center">
+                             <Button variant="ghost" size="icon" className="absolute left-0" onClick={() => router.back()}>
+                                <ArrowLeft />
+                            </Button>
+                            <CardTitle className="text-center">Payment History</CardTitle>
+                        </div>
+                        <CardDescription className="text-center">View your deposit and withdrawal history.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Tabs defaultValue="deposits">
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="deposits">Deposit History</TabsTrigger>
+                                <TabsTrigger value="withdrawals">Withdrawal History</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="deposits" className="mt-4">
+                                <DepositHistoryTab userId={user.uid} />
+                            </TabsContent>
+                            <TabsContent value="withdrawals" className="mt-4">
+                                <WithdrawalHistoryTab userId={user.uid} />
+                            </TabsContent>
+                        </Tabs>
+                    </CardContent>
+                </Card>
+            </main>
+        </div>
+    )
+}

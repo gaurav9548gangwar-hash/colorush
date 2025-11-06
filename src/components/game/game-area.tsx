@@ -64,65 +64,89 @@ export function GameArea() {
     setIsBettingLocked(true);
     setIsProcessing(true);
 
-    let winningNumber: number;
-    const playFairChance = 0.3; // 30% chance for a completely random (fair) result
+    const FAIR_PLAY_CHANCE = 0.3; // 30% chance for a round that favors users
+    const betsToProcess = [...currentRoundBets];
 
-    // Decide if this round will be random or strategic
-    if (Math.random() < playFairChance) {
-        // --- FAIR PLAY LOGIC ---
-        // Pick a completely random number, ignoring payouts. This gives players a real chance.
-        winningNumber = Math.floor(Math.random() * 10);
-    } else {
-        // --- STRATEGIC LOGIC (Minimize Payouts) ---
-        const betsToProcess = [...currentRoundBets];
-        const potentialPayouts: { [key in BetTarget | 'green' | 'orange' | 'white']: number } = {
-            green: 0, orange: 0, white: 0,
-            small: 0, big: 0,
-            0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0
-        };
+    // --- STRATEGIC LOGIC (Minimize Payouts or Fair Play) ---
+    const potentialPayouts: { [num: number]: number } = {};
+    const winnersByNumber: { [num: number]: Set<string> } = {};
 
-        betsToProcess.forEach(bet => {
-            let payout = 0;
-            const betNum = typeof bet.target === 'number' ? bet.target : -1;
-
-            if (bet.type === 'color') {
-                const color = bet.target as BetColor;
-                payout = bet.amount * (color === 'white' ? 4.5 : 2);
-                if (color in potentialPayouts) potentialPayouts[color] += payout;
-            } else if (bet.type === 'number' && betNum !== -1) {
-                payout = bet.amount * 9;
-                if (betNum in potentialPayouts) potentialPayouts[betNum] += payout;
-            } else if (bet.type === 'size') {
-                payout = bet.amount * 2;
-                if (bet.target in potentialPayouts) potentialPayouts[bet.target as BetSize] += payout;
-            }
-        });
-        
-        const combinedColorPayouts = {
-            green: potentialPayouts.green + potentialPayouts[1] + potentialPayouts[3] + potentialPayouts[7] + potentialPayouts[9],
-            orange: potentialPayouts.orange + potentialPayouts[2] + potentialPayouts[4] + potentialPayouts[6] + potentialPayouts[8],
-            white: potentialPayouts.white + potentialPayouts[0] + potentialPayouts[5]
-        }
-
-        let leastPayoutColor: BetColor = 'green';
-        let minPayout = combinedColorPayouts.green;
-
-        if (combinedColorPayouts.orange < minPayout) {
-            minPayout = combinedColorPayouts.orange;
-            leastPayoutColor = 'orange';
-        }
-        if (combinedColorPayouts.white < minPayout) {
-            leastPayoutColor = 'white';
-        }
-
-        const possibleNumbers = {
-            green: [1, 3, 7, 9],
-            orange: [2, 4, 6, 8],
-            white: [0, 5],
-        }[leastPayoutColor];
-        
-        winningNumber = possibleNumbers[Math.floor(Math.random() * possibleNumbers.length)];
+    for (let i = 0; i <= 9; i++) {
+        potentialPayouts[i] = 0;
+        winnersByNumber[i] = new Set();
     }
+    
+    betsToProcess.forEach(bet => {
+        // Calculate payout for NUMBER bets
+        if (bet.type === 'number' && typeof bet.target === 'number') {
+            potentialPayouts[bet.target] += bet.amount * 9;
+            winnersByNumber[bet.target].add(bet.userId);
+        }
+        // Calculate payout for COLOR and SIZE bets for each potential winning number
+        for (let i = 0; i <= 9; i++) {
+            const winningColor = getWinningColor(i);
+            const winningSize = getWinningSize(i);
+            if (bet.type === 'color' && bet.target === winningColor) {
+                const payoutMultiplier = winningColor === 'white' ? 4.5 : 2;
+                potentialPayouts[i] += bet.amount * payoutMultiplier;
+                winnersByNumber[i].add(bet.userId);
+            }
+            if (bet.type === 'size' && bet.target === winningSize) {
+                potentialPayouts[i] += bet.amount * 2;
+                winnersByNumber[i].add(bet.userId);
+            }
+        }
+    });
+
+    let winningNumber: number;
+
+    if (Math.random() < FAIR_PLAY_CHANCE) {
+        // --- FAIR PLAY LOGIC ---
+        // Find the number that makes the most unique users win.
+        let maxWinners = -1;
+        let bestNumbersForFairPlay: number[] = [];
+        
+        for (let i = 0; i <= 9; i++) {
+            const numWinners = winnersByNumber[i].size;
+            if (numWinners > maxWinners) {
+                maxWinners = numWinners;
+                bestNumbersForFairPlay = [i];
+            } else if (numWinners === maxWinners) {
+                bestNumbersForFairPlay.push(i);
+            }
+        }
+        
+        // If there's a tie, pick the one with the lowest payout among the tied numbers
+        if (bestNumbersForFairPlay.length > 1) {
+            let minPayout = Infinity;
+            let finalBestNumber = bestNumbersForFairPlay[0];
+            for (const num of bestNumbersForFairPlay) {
+                if (potentialPayouts[num] < minPayout) {
+                    minPayout = potentialPayouts[num];
+                    finalBestNumber = num;
+                }
+            }
+            winningNumber = finalBestNumber;
+        } else {
+             winningNumber = bestNumbersForFairPlay[0];
+        }
+
+    } else {
+        // --- BUSINESS LOGIC (Minimize Payout) ---
+        let minPayout = Infinity;
+        let bestNumbers: number[] = [];
+
+        for (let i = 0; i <= 9; i++) {
+            if (potentialPayouts[i] < minPayout) {
+                minPayout = potentialPayouts[i];
+                bestNumbers = [i];
+            } else if (potentialPayouts[i] === minPayout) {
+                bestNumbers.push(i);
+            }
+        }
+        winningNumber = bestNumbers[Math.floor(Math.random() * bestNumbers.length)];
+    }
+
 
     const winningColor = getWinningColor(winningNumber);
     const winningSize = getWinningSize(winningNumber);

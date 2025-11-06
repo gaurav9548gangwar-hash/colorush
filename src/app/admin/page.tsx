@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
@@ -13,6 +12,7 @@ import {
   where,
   increment,
   type Timestamp,
+  deleteDoc,
 } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, DepositRequest, WithdrawalRequest } from '@/lib/types'
@@ -22,13 +22,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { LogOut, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
+import { LogOut, RefreshCw, CheckCircle, XCircle, Trash2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 
 
 // #####################################################################
@@ -79,7 +80,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm">Edit Balance</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="outline">Edit Balance</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Balance for {user.name}</DialogTitle>
@@ -110,6 +111,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
 // #####################################################################
 function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRefresh: number }) {
     const { firestore } = useFirebase();
+    const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
 
     const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore, keyForRefresh]);
@@ -119,6 +121,25 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
         (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (u.phone && u.phone.includes(searchTerm))
     ), [users, searchTerm]);
+
+    const handleDeleteUser = async (userId: string) => {
+        if (!firestore) return;
+        
+        const userDocRef = doc(firestore, 'users', userId);
+
+        try {
+            await deleteDoc(userDocRef);
+            toast({ title: "User Deleted", description: "The user's data has been removed from Firestore." });
+            onUpdate(); // Refresh the user list
+        } catch (error) {
+            const contextualError = new FirestorePermissionError({
+                path: userDocRef.path,
+                operation: 'delete',
+            });
+            errorEmitter.emit('permission-error', contextualError);
+            toast({ variant: "destructive", title: "Deletion Failed", description: "Could not delete user. Check permissions." });
+        }
+    };
     
     return (
         <Card>
@@ -161,8 +182,26 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     <TableCell className="font-mono text-xs">{u.password || 'N/A'}</TableCell>
                                     <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right space-x-2">
                                         <BalanceDialog user={u} onUpdate={onUpdate} />
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button size="sm" variant="destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete User</Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This action cannot be undone. This will permanently delete the user's data from the database. 
+                                                        Their authentication record will remain, but they won't be able to use the app.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleDeleteUser(u.id)}>Delete</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
                                     </TableCell>
                                 </TableRow>
                             )) : (

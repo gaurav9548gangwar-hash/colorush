@@ -33,23 +33,35 @@ service cloud.firestore {
     }
 
     match /deposits/{depositId} {
-      // Admin can read all deposit documents
-      allow read: if isAdmin();
+      // Admin can list pending deposit requests.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      
+      // An admin or the owner can get a specific deposit request.
+      allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
+
       // A user can create their own deposit request.
       allow create: if request.auth.uid == request.resource.data.userId;
+      
       // Only an admin can update (approve/reject) a deposit request.
       allow update: if isAdmin();
+      
       // No one can delete a deposit request to maintain history.
       allow delete: if false; 
     }
 
      match /withdrawals/{withdrawalId} {
-      // Admin can read all withdrawal documents
-      allow read: if isAdmin();
+      // Admin can list pending withdrawal requests.
+      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      
+      // An admin or the owner can get a specific withdrawal request.
+      allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
+
       // A user can create their own withdrawal request.
       allow create: if request.auth.uid == request.resource.data.userId;
+      
       // Only an admin can update (approve/reject) a withdrawal request.
       allow update: if isAdmin();
+
       // No one can delete a withdrawal request to maintain history.
       allow delete: if false;
      }
@@ -62,8 +74,7 @@ service cloud.firestore {
       allow read: if resource.data.userId == request.auth.uid || isAdmin();
 
       // Users can LIST their own bets. Admins and the round-end process can list bets.
-      allow list: if (request.auth != null && request.query.where[0][2] == request.auth.uid) || 
-                  (isAdmin() || (request.query.where[0][0] == 'roundId' && request.query.where[1][0] == 'status' && request.query.where[1][2] == 'pending'));
+      allow list: if (request.auth != null && request.query.where[0][2] == request.auth.uid) || isAdmin();
       
       // Bet documents are updated by the round-end process.
       allow update: if isAdmin();
@@ -80,3 +91,5 @@ service cloud.firestore {
     }
   }
 }
+
+    

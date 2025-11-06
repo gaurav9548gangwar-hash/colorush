@@ -18,7 +18,7 @@ import { useFirebase } from '@/firebase'
 import { useToast } from '@/hooks/use-toast'
 import type { Bet, BetColor, BetSize, BetTarget, User } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { doc, getDoc, increment, updateDoc, writeBatch, collection, serverTimestamp, addDoc } from 'firebase/firestore'
+import { doc, getDoc, increment, writeBatch, collection, serverTimestamp, addDoc } from 'firebase/firestore'
 import { FirestorePermissionError } from '@/firebase/errors'
 import { errorEmitter } from '@/firebase/error-emitter'
 
@@ -72,10 +72,9 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
     setIsSubmitting(true)
     
     const userRef = doc(firestore, 'users', user.uid);
-    const betsRef = collection(firestore, 'bets');
+    const betsCollectionRef = collection(firestore, 'bets');
 
     try {
-      // Step 1: Get the user's current balance from Firestore
       const userDoc = await getDoc(userRef);
       if (!userDoc.exists()) {
         throw new Error("User data not found.");
@@ -84,7 +83,6 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       const userData = userDoc.data() as User;
       const currentBalance = userData.balance || 0;
 
-      // Step 2: Check if the balance is sufficient
       if (currentBalance < amount) {
         toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your balance is too low. You need at least INR ${amount}.` });
         setIsSubmitting(false);
@@ -94,13 +92,11 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       
       const batch = writeBatch(firestore);
 
-      // Step 3: Deduct balance from user document
       batch.update(userRef, {
         balance: increment(-amount)
       });
       
-      // Step 4: Create the new bet document with 'pending' status
-      const newBetRef = doc(betsRef); // Create a new document reference with a unique ID
+      const newBetRef = doc(betsCollectionRef); 
       const betData: Bet = {
         id: newBetRef.id,
         userId: user.uid,
@@ -114,26 +110,23 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       }
       batch.set(newBetRef, betData);
 
-      // Step 5: Commit the batch
       await batch.commit();
 
       toast({ title: 'Bet Placed!', description: `You bet INR ${amount} on ${target}. Good luck!` })
       setOpen(false)
 
     } catch (error: any) {
-        // If the balance update fails, it could be a permission error
         const contextualError = new FirestorePermissionError({
-            path: userRef.path,
-            operation: 'update',
+            path: error.message.includes("User data not found") ? userRef.path : 'bets',
+            operation: error.message.includes("User data not found") ? 'get' : 'create',
             requestResourceData: { balance: `increment(${-amount})` },
         });
         errorEmitter.emit('permission-error', contextualError);
         
-        // Also show a generic error to the user
         toast({ 
           variant: 'destructive', 
           title: 'Error Placing Bet', 
-          description: error.message === "User data not found." ? error.message : 'Could not update your balance. Please check permissions.'
+          description: error.message === "User data not found." ? error.message : 'Could not place your bet. Please check permissions.'
         })
     } finally {
       setIsSubmitting(false)
@@ -181,3 +174,5 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
     </Dialog>
   )
 }
+
+    

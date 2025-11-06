@@ -59,14 +59,31 @@ export function GameArea() {
     setIsBettingLocked(true);
     setIsProcessing(true);
 
-    // Fetch all pending bets for the current round
     const betsQuery = query(
         collection(firestore, 'bets'), 
         where('roundId', '==', currentRoundId),
         where('status', '==', 'pending')
     );
-    const pendingBetsSnapshot = await getDocs(betsQuery);
-    const betsToProcess: Bet[] = pendingBetsSnapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
+
+    let betsToProcess: Bet[] = [];
+    try {
+        const pendingBetsSnapshot = await getDocs(betsQuery);
+        betsToProcess = pendingBetsSnapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
+    } catch (error) {
+        console.error("Error fetching pending bets: ", error);
+        toast({ variant: "destructive", title: "Round Error", description: "Could not fetch bets to process round." });
+        
+        if (error instanceof Error && (error as any).code === 'permission-denied') {
+             const contextualError = new FirestorePermissionError({
+                path: `bets`,
+                operation: 'list',
+                requestResourceData: { info: "Querying for pending bets in a round failed." },
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        }
+        setIsProcessing(false);
+        return;
+    }
     
 
     const FAIR_PLAY_CHANCE = 0.3; 
@@ -79,17 +96,16 @@ export function GameArea() {
     }
     
     betsToProcess.forEach(bet => {
-        // Calculate payout for NUMBER bets
         if (bet.type === 'number' && typeof bet.target === 'number') {
             potentialPayouts[bet.target] += bet.amount * 9;
             winnersByNumber[bet.target].add(bet.userId);
         }
-        // Calculate payout for COLOR and SIZE bets for each potential winning number
         for (let i = 0; i <= 9; i++) {
             const winningColor = getWinningColor(i);
             const winningSize = getWinningSize(i);
+            let payoutMultiplier = 2;
+
             if (bet.type === 'color' && bet.target === winningColor) {
-                const payoutMultiplier = 2; // All colors pay 2x
                 potentialPayouts[i] += bet.amount * payoutMultiplier;
                 winnersByNumber[i].add(bet.userId);
             }
@@ -103,7 +119,6 @@ export function GameArea() {
     let winningNumber: number;
 
     if (Math.random() < FAIR_PLAY_CHANCE) {
-        // --- FAIR PLAY LOGIC ---
         let maxWinners = -1;
         let bestNumbersForFairPlay: number[] = [];
         
@@ -132,7 +147,6 @@ export function GameArea() {
         }
 
     } else {
-        // --- BUSINESS LOGIC (Minimize Payout) ---
         let minPayout = Infinity;
         let bestNumbers: number[] = [];
 
@@ -198,7 +212,6 @@ export function GameArea() {
             }
         }
 
-        // Add user payouts to the same batch
         for (const userId in userPayouts) {
             if (userPayouts[userId] > 0) {
                 const userRef = doc(firestore, "users", userId);
@@ -321,3 +334,5 @@ export function GameArea() {
     </Card>
   )
 }
+
+    

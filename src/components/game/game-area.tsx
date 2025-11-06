@@ -66,7 +66,7 @@ export function GameArea() {
         where('status', '==', 'pending')
     );
     const pendingBetsSnapshot = await getDocs(betsQuery);
-    const betsToProcess: Bet[] = pendingBetsSnapshot.docs.map(doc => doc.data() as Bet);
+    const betsToProcess: Bet[] = pendingBetsSnapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
     
 
     const FAIR_PLAY_CHANCE = 0.3; 

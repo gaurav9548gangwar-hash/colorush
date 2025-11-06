@@ -33,8 +33,8 @@ service cloud.firestore {
     }
 
     match /deposits/{depositId} {
-      // Admin can list pending deposit requests.
-      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      // Admin can list pending requests. Users can list their own requests.
+      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
       
       // An admin or the owner can get a specific deposit request.
       allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
@@ -50,8 +50,8 @@ service cloud.firestore {
     }
 
      match /withdrawals/{withdrawalId} {
-      // Admin can list pending withdrawal requests.
-      allow list: if isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending';
+      // Admin can list pending requests. Users can list their own requests.
+      allow list: if (isAdmin() && request.query.where[0][0] == 'status' && request.query.where[0][2] == 'pending') || (request.query.where[0][0] == 'userId' && isOwner(request.query.where[0][2]));
       
       // An admin or the owner can get a specific withdrawal request.
       allow get: if isAdmin() || (request.auth.uid == resource.data.userId);
@@ -74,10 +74,12 @@ service cloud.firestore {
       allow read: if resource.data.userId == request.auth.uid || isAdmin();
 
       // Users can LIST their own bets. Admin can list all bets.
-      allow list: if (request.auth != null && request.query.where[0][2] == request.auth.uid) || isAdmin();
+      allow list: if isAdmin() || (request.auth != null && request.query.where[0][2] == request.auth.uid);
       
-      // Direct updates and deletes by users are not allowed.
-      allow update, delete: if false;
+      // Bet documents are updated by the round-end process.
+      allow update: if isAdmin();
+      // Users cannot delete bets.
+      allow delete: if false;
     }
 
     match /game_rounds/{gameId} {

@@ -22,8 +22,9 @@ const formatDate = (timestamp: Timestamp | Date | string | undefined) => {
 
 function DepositHistoryTab({ userId }: { userId: string }) {
     const { firestore } = useFirebase()
+    // Removed orderBy from the query to simplify it and avoid complex index/rules issues.
     const depositsRef = useMemoFirebase(
-        () => firestore ? query(collection(firestore, 'deposits'), where('userId', '==', userId)/*, orderBy('createdAt', 'desc')*/) : null,
+        () => firestore ? query(collection(firestore, 'deposits'), where('userId', '==', userId)) : null,
         [firestore, userId]
     )
     const { data: deposits, isLoading, error } = useCollection<DepositRequest>(depositsRef)
@@ -36,16 +37,20 @@ function DepositHistoryTab({ userId }: { userId: string }) {
         }
     }
 
+    // Manual client-side sorting as a permanent fix for the permission issue.
+    const sortedDeposits = useMemo(() => {
+        if (!deposits) return [];
+        return [...deposits].sort((a, b) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+            return dateB - dateA; // Sort descending (newest first)
+        });
+    }, [deposits]);
+
+
     if (isLoading) return <p className="text-center py-4">Loading deposit history...</p>
     if (error) return <p className="text-center text-destructive py-4">Error loading history. Please check permissions.</p>
-    if (!deposits || deposits.length === 0) return <p className="text-center py-4 text-muted-foreground">No deposit history found.</p>
-
-    // Manual client-side sorting as a fallback
-    const sortedDeposits = deposits.sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-        return dateB - dateA;
-    });
+    if (!sortedDeposits || sortedDeposits.length === 0) return <p className="text-center py-4 text-muted-foreground">No deposit history found.</p>
 
     return (
         <Table>
@@ -73,8 +78,9 @@ function DepositHistoryTab({ userId }: { userId: string }) {
 
 function WithdrawalHistoryTab({ userId }: { userId: string }) {
     const { firestore } = useFirebase()
+    // Removed orderBy from the query to simplify it and avoid complex index/rules issues.
     const withdrawalsRef = useMemoFirebase(
-        () => firestore ? query(collection(firestore, 'withdrawals'), where('userId', '==', userId)/*, orderBy('createdAt', 'desc')*/) : null,
+        () => firestore ? query(collection(firestore, 'withdrawals'), where('userId', '==', userId)) : null,
         [firestore, userId]
     )
     const { data: withdrawals, isLoading, error } = useCollection<WithdrawalRequest>(withdrawalsRef)
@@ -87,16 +93,20 @@ function WithdrawalHistoryTab({ userId }: { userId: string }) {
         }
     }
 
+    // Manual client-side sorting as a permanent fix for the permission issue.
+    const sortedWithdrawals = useMemo(() => {
+        if (!withdrawals) return [];
+        return [...withdrawals].sort((a, b) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+            return dateB - dateA; // Sort descending (newest first)
+        });
+    }, [withdrawals]);
+
+
     if (isLoading) return <p className="text-center py-4">Loading withdrawal history...</p>
     if (error) return <p className="text-center text-destructive py-4">Error loading history. Please check permissions.</p>
-    if (!withdrawals || withdrawals.length === 0) return <p className="text-center py-4 text-muted-foreground">No withdrawal history found.</p>
-
-    // Manual client-side sorting as a fallback
-    const sortedWithdrawals = withdrawals.sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-        return dateB - dateA;
-    });
+    if (!sortedWithdrawals || sortedWithdrawals.length === 0) return <p className="text-center py-4 text-muted-foreground">No withdrawal history found.</p>
 
     return (
         <Table>

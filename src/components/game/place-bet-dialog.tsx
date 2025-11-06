@@ -16,9 +16,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useFirebase } from '@/firebase'
 import { useToast } from '@/hooks/use-toast'
-import type { Bet, BetColor, BetSize, BetTarget } from '@/lib/types'
+import type { Bet, BetColor, BetSize, BetTarget, User } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { doc, increment, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, increment, updateDoc } from 'firebase/firestore'
 import { FirestorePermissionError } from '@/firebase/errors'
 import { errorEmitter } from '@/firebase/error-emitter'
 
@@ -61,21 +61,43 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
   }
 
   const handlePlaceBet = async () => {
-    if (!user || !roundId || amount <= 0 || !firestore) {
-      toast({ variant: 'destructive', title: 'Invalid Bet', description: 'Please log in and enter a valid amount.' })
+    if (!user || !roundId || !firestore) {
+      toast({ variant: 'destructive', title: 'Invalid Bet', description: 'Please log in to place a bet.' })
       return
     }
+     if (amount < 10) {
+      toast({ variant: 'destructive', title: 'Invalid Amount', description: 'Minimum bet amount is INR 10.' });
+      return;
+    }
+
     setIsSubmitting(true)
     
     const userRef = doc(firestore, 'users', user.uid);
 
     try {
-      // Step 1: Deduct balance
+      // Step 1: Get the user's current balance from Firestore
+      const userDoc = await getDoc(userRef);
+      if (!userDoc.exists()) {
+        throw new Error("User data not found.");
+      }
+      
+      const userData = userDoc.data() as User;
+      const currentBalance = userData.balance || 0;
+
+      // Step 2: Check if the balance is sufficient
+      if (currentBalance < amount) {
+        toast({ variant: 'destructive', title: 'Insufficient Balance', description: 'You do not have enough funds to place this bet.' });
+        setIsSubmitting(false);
+        setOpen(false);
+        return;
+      }
+      
+      // Step 3: Deduct balance
       await updateDoc(userRef, {
         balance: increment(-amount)
       });
 
-      // Step 2: If deduction is successful, place the bet locally
+      // Step 4: If deduction is successful, place the bet locally
       const betData = {
         userId: user.uid,
         roundId,
@@ -91,13 +113,20 @@ export function PlaceBetDialog({ type, target, roundId, disabled, onBetPlaced }:
       setOpen(false)
 
     } catch (error: any) {
+        // If the balance update fails, it could be a permission error
         const contextualError = new FirestorePermissionError({
             path: userRef.path,
             operation: 'update',
             requestResourceData: { balance: `increment(${-amount})` },
         });
         errorEmitter.emit('permission-error', contextualError);
-        toast({ variant: 'destructive', title: 'Error Placing Bet', description: 'Could not update your balance. Please check permissions.' })
+        
+        // Also show a generic error to the user
+        toast({ 
+          variant: 'destructive', 
+          title: 'Error Placing Bet', 
+          description: error.message === "User data not found." ? error.message : 'Could not update your balance. Please check permissions.'
+        })
     } finally {
       setIsSubmitting(false)
     }

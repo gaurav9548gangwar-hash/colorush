@@ -377,10 +377,14 @@ export default function AdminPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (sessionStorage.getItem('isAdminLoggedIn') !== 'true') {
-      router.replace('/admin/login');
-    } else {
-      setIsAuthenticating(false);
+    // Check if running on the client side before accessing sessionStorage
+    if (typeof window !== 'undefined') {
+      const isAdminLoggedIn = sessionStorage.getItem('isAdminLoggedIn') === 'true';
+      if (!isAdminLoggedIn) {
+        router.replace('/admin/login');
+      } else {
+        setIsAuthenticating(false);
+      }
     }
   }, [router]);
 

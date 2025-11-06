@@ -22,7 +22,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
         ? query(
             collection(firestore, 'bets'),
             where('userId', '==', userId),
-            orderBy('createdAt', 'desc'),
+            // orderBy('createdAt', 'desc'), // Temporarily removed to fix permission errors.
             limit(50)
           )
         : null,
@@ -56,12 +56,22 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
       }
   }
 
+  // Sort bets manually on the client-side
+  const sortedBets = useMemo(() => {
+    if (!bets) return [];
+    return bets.sort((a, b) => {
+      const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
+      const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [bets]);
+
 
   if (isLoading) {
     return <p className="text-center py-4">Loading your bets...</p>
   }
 
-  if (!bets || bets.length === 0) {
+  if (!sortedBets || sortedBets.length === 0) {
     return <p className="text-center py-4 text-muted-foreground">You haven't placed any bets yet.</p>
   }
 
@@ -76,7 +86,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {bets.map(bet => (
+          {sortedBets.map(bet => (
             <TableRow key={bet.id}>
               <TableCell>{bet.roundId.substring(9, 13)}</TableCell>
               <TableCell>{renderTarget(bet)}</TableCell>

@@ -73,7 +73,7 @@ service cloud.firestore {
       // Users can only READ their own bets. Admin can read any bet.
       allow read: if resource.data.userId == request.auth.uid || isAdmin();
 
-      // Users can LIST their own bets. Admins and the round-end process can list bets.
+      // Users can LIST their own bets. Admin can list all bets.
       allow list: if isAdmin() || (request.auth != null && request.query.where[0][2] == request.auth.uid);
       
       // Bet documents are updated by the round-end process.
@@ -91,5 +91,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

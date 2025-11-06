@@ -1,13 +1,14 @@
-
 'use client'
 
-import { useMemo } from 'react'
-import { collection, query, where, limit, orderBy } from 'firebase/firestore'
-import { useFirebase, useMemoFirebase } from '@/firebase'
-import { useCollection } from '@/firebase/firestore/use-collection'
+import { useMemo, useEffect, useState } from 'react'
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore'
+import { useFirebase } from '@/firebase'
 import type { Bet } from '@/lib/types'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { FirestoreError } from 'firebase/firestore'
+import { FirestorePermissionError } from '@/firebase/errors'
+import { errorEmitter } from '@/firebase/error-emitter'
 
 interface MyBetsTabProps {
   userId: string
@@ -15,21 +16,42 @@ interface MyBetsTabProps {
 
 export function MyBetsTab({ userId }: MyBetsTabProps) {
   const { firestore } = useFirebase()
+  const [bets, setBets] = useState<Bet[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
-  const betsRef = useMemoFirebase(
-    () =>
-      firestore && userId
-        ? query(
-            collection(firestore, 'bets'),
-            where('userId', '==', userId),
-            // orderBy('createdAt', 'desc'), // Temporarily removed to fix permission errors.
-            limit(50)
-          )
-        : null,
-    [firestore, userId]
-  )
+  useEffect(() => {
+    const fetchBets = async () => {
+      if (!firestore || !userId) {
+        setIsLoading(false)
+        return
+      }
+      setIsLoading(true)
+      setError(null)
+      
+      try {
+        const betsQuery = query(
+          collection(firestore, 'bets'),
+          where('userId', '==', userId)
+        );
+        const querySnapshot = await getDocs(betsQuery)
+        const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet))
+        setBets(userBets)
+      } catch (err) {
+        console.error("Error fetching bets: ", err)
+        const contextualError = new FirestorePermissionError({
+            path: `bets`,
+            operation: 'list',
+        });
+        errorEmitter.emit('permission-error', contextualError);
+        setError(contextualError)
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-  const { data: bets, isLoading } = useCollection<Bet>(betsRef)
+    fetchBets()
+  }, [firestore, userId])
 
   const renderTarget = (bet: Bet) => {
     const baseClasses = "px-2 py-1 rounded-md text-xs font-bold text-white"
@@ -59,16 +81,19 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   // Sort bets manually on the client-side
   const sortedBets = useMemo(() => {
     if (!bets) return [];
-    return bets.sort((a, b) => {
+    return [...bets].sort((a, b) => {
       const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
       const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
       return dateB.getTime() - dateA.getTime();
     });
   }, [bets]);
 
-
   if (isLoading) {
     return <p className="text-center py-4">Loading your bets...</p>
+  }
+  
+  if (error) {
+    return <p className="text-center py-4 text-destructive">Error loading your bets. Check console.</p>
   }
 
   if (!sortedBets || sortedBets.length === 0) {

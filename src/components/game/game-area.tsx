@@ -87,7 +87,7 @@ export function GameArea() {
             const winningColor = getWinningColor(i);
             const winningSize = getWinningSize(i);
             if (bet.type === 'color' && bet.target === winningColor) {
-                const payoutMultiplier = winningColor === 'white' ? 4.5 : 2;
+                const payoutMultiplier = 2; // All colors pay 2x
                 potentialPayouts[i] += bet.amount * payoutMultiplier;
                 winnersByNumber[i].add(bet.userId);
             }
@@ -182,7 +182,7 @@ export function GameArea() {
                 payout = bet.amount * 9;
             } else if (bet.type === 'color' && bet.target === resultData.winningColor) {
                 hasWon = true;
-                payout = bet.amount * (resultData.winningColor === 'white' ? 4.5 : 2);
+                payout = bet.amount * 2; // All colors pay 2x
             } else if (bet.type === 'size' && bet.target === resultData.winningSize) {
                 hasWon = true;
                 payout = bet.amount * 2;

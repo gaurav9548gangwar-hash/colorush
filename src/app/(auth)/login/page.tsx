@@ -57,7 +57,7 @@ export default function LoginPage() {
         emailId: emailId,
         balance: 0,
         createdAt: new Date().toISOString(),
-        password: btoa(password) 
+        password: password
       };
       
       const userDocRef = doc(firestore, "users", newUser.uid);

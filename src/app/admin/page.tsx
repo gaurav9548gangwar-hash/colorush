@@ -145,7 +145,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                         <TableHeader>
                             <TableRow>
                                 <TableHead>User</TableHead>
-                                <TableHead>Password (Encrypted)</TableHead>
+                                <TableHead>Password</TableHead>
                                 <TableHead>Balance</TableHead>
                                 <TableHead>Join Date</TableHead>
                                 <TableHead className='text-right'>Actions</TableHead>

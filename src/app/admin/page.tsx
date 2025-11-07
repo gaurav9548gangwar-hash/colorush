@@ -7,7 +7,6 @@ import {
   doc,
   query,
   updateDoc,
-  writeBatch,
   getDoc,
   where,
   increment,
@@ -239,18 +238,17 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 
         if (newStatus === 'approved') {
             try {
-                // Step 1: Update user balance
+                // Step 1: Update user balance first.
                 await updateDoc(userRef, { balance: increment(request.amount) });
 
-                // Step 2: If balance update is successful, update request status
+                // Step 2: If balance update is successful, update the request status.
                 await updateDoc(requestRef, { status: newStatus });
                 
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
-                onUpdate();
+                onUpdate(); // This will trigger a refresh in the parent component
             } catch (err: any) {
-                // Check if the error happened during the user balance update.
-                const isUserUpdateError = err.message.toLowerCase().includes('users');
-                
+                const isUserUpdateError = err.message.toLowerCase().includes('user');
+
                 const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
                 const operation: 'update' = 'update';
                 const requestData = isUserUpdateError 
@@ -263,12 +261,20 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                     requestResourceData: requestData,
                 });
                 errorEmitter.emit('permission-error', contextualError);
-                toast({ variant: 'destructive', title: 'Error', description: `Could not process approval. Failed to update ${isUserUpdateError ? 'user balance' : 'request status'}. Check permissions.` });
+                toast({ variant: 'destructive', title: 'Error Processing Approval', description: `Failed to update ${isUserUpdateError ? 'user balance' : 'request status'}. Check permissions.` });
+                
+                // If the balance was updated but the request status failed, we should try to revert the balance.
+                // This is complex and for this app, we will log it. In a real app, a cloud function would be better.
+                if(!isUserUpdateError) {
+                    console.error("CRITICAL: User balance was updated, but deposit status was not. Manual correction needed for user:", request.userId);
+                }
+
             } finally {
                 setIsProcessing(null);
             }
         } else { // newStatus is 'rejected'
              try {
+                // For rejections, we only need to update the request status.
                 await updateDoc(requestRef, { status: newStatus });
                 toast({ title: 'Success', description: `Request has been ${newStatus}.` });
                 onUpdate();
@@ -503,3 +509,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    

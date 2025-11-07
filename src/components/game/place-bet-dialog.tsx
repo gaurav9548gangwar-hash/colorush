@@ -71,7 +71,6 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
     setIsSubmitting(true)
     
     const userRef = doc(firestore, 'users', user.uid);
-    const betsCollectionRef = collection(firestore, 'bets');
 
     try {
       const userDoc = await getDoc(userRef);
@@ -101,7 +100,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       }
       
       // Step 1: Create the bet document first
-      await addDoc(betsCollectionRef, betData);
+      await addDoc(collection(firestore, 'bets'), betData);
 
       // Step 2: If bet creation is successful, then deduct the balance.
       // Prioritize deducting from main balance, then winnings balance.

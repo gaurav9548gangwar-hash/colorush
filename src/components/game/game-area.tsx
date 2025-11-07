@@ -96,7 +96,6 @@ export function GameArea() {
 
     // Winning chances
     const WINNING_CHANCE_HIGH = 0.8; // 80% when in winning phase
-    const WINNING_CHANCE_LOW = 0.3;  // 30% default (not used in new logic)
 
     const betsQuery = query(
         collection(firestore, 'bets'), 
@@ -274,6 +273,7 @@ export function GameArea() {
             const betDocRef = doc(firestore, 'bets', bet.id);
             let hasWon = false;
             let payout = 0;
+            let profit = 0;
     
             if (bet.type === 'number' && bet.target === resultData.winningNumber) {
                 hasWon = true;
@@ -295,8 +295,9 @@ export function GameArea() {
                 if (!userPayouts[bet.userId]) {
                     userPayouts[bet.userId] = { balance: 0, winnings: 0 };
                 }
-                userPayouts[bet.userId].balance += payout;
-                userPayouts[bet.userId].winnings += payout;
+                profit = payout - bet.amount;
+                userPayouts[bet.userId].balance += bet.amount; // Return original bet amount to main balance
+                userPayouts[bet.userId].winnings += profit; // Add only profit to winnings balance
                 userWinLoss[bet.userId] = 'win';
             } else if(userWinLoss[bet.userId] !== 'win') {
                  userWinLoss[bet.userId] = 'loss';
@@ -305,7 +306,7 @@ export function GameArea() {
 
         for (const userId in userPayouts) {
             const payout = userPayouts[userId];
-            if (payout.balance > 0) {
+            if (payout.balance > 0 || payout.winnings > 0) {
                 const userRef = doc(firestore, "users", userId);
                 batch.update(userRef, { 
                     balance: increment(payout.balance),

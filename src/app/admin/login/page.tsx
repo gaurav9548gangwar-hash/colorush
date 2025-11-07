@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { useFirebase } from '@/firebase'
-import { doc, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 
 const ADMIN_PASSWORD = 'gaurav@9548'
 
@@ -17,49 +17,74 @@ export default function AdminLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
-  const { user, firestore } = useFirebase()
+  const { user, isUserLoading, firestore } = useFirebase()
 
   useEffect(() => {
-    if (sessionStorage.getItem('isAdminLoggedIn') === 'true') {
-      router.replace('/admin');
+    if (isUserLoading) return; // Wait until user status is determined
+
+    // If user is not logged in at all, redirect to main login
+    if (!user) {
+        toast({ variant: 'destructive', title: 'Login Required', description: 'Please log in as a user first to access the admin area.' });
+        router.replace('/login');
+        return;
     }
-  }, [router]);
+
+    // If already an admin, go to admin dashboard
+    const checkAdminStatus = async () => {
+        if(firestore && user){
+            const userRef = doc(firestore, 'users', user.uid);
+            const userDoc = await getDoc(userRef);
+            if(userDoc.exists() && userDoc.data().isAdmin){
+                sessionStorage.setItem('isAdminLoggedIn', 'true');
+                router.replace('/admin');
+            }
+        }
+    }
+    checkAdminStatus();
+    
+  }, [user, isUserLoading, router, firestore, toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     
     if (password === ADMIN_PASSWORD) {
-        toast({ title: 'Login Successful' });
-        sessionStorage.setItem('isAdminLoggedIn', 'true');
-
-        // Check if user is logged in and make them admin if they are not already
+        // User must be logged in to proceed
         if (user && firestore) {
           try {
             const userRef = doc(firestore, 'users', user.uid);
             await updateDoc(userRef, { isAdmin: true });
-            toast({ title: 'Admin Status Granted', description: 'Your account now has admin privileges.' });
+            toast({ title: 'Admin Status Granted!', description: 'Your account now has admin privileges. Redirecting...' });
+            sessionStorage.setItem('isAdminLoggedIn', 'true');
+            router.push('/admin');
           } catch (error) {
             console.error("Error granting admin status: ", error);
             toast({ variant: 'destructive', title: 'Admin Grant Failed', description: 'Could not set admin status in Firestore.' });
+            setIsSubmitting(false);
           }
-        } else if (!user) {
-            toast({ variant: 'destructive', title: 'User Not Logged In', description: 'Please log in as a regular user first before accessing the admin panel.' });
+        } else {
+            // This case should ideally not be reached due to the useEffect check
+            toast({ variant: 'destructive', title: 'User Not Logged In', description: 'Something went wrong. Please log in again.' });
             router.push('/login');
             setIsSubmitting(false);
-            return;
         }
-
-        router.push('/admin');
     } else {
         toast({
             variant: 'destructive',
             title: 'Login Failed',
             description: 'The password you entered is incorrect.',
         })
+        setIsSubmitting(false);
     }
-    
-    setIsSubmitting(false);
+  }
+
+  // Show a loading state while checking user auth
+  if (isUserLoading || !user) {
+    return (
+        <div className="flex items-center justify-center min-h-screen w-full">
+            <p>Loading user data...</p>
+        </div>
+    )
   }
 
   return (
@@ -67,7 +92,7 @@ export default function AdminLoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-primary">Admin Panel Lock</CardTitle>
-          <CardDescription>Enter the password to continue.</CardDescription>
+          <CardDescription>Enter the password to grant admin rights to your current user and unlock.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -83,7 +108,7 @@ export default function AdminLoginPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Unlocking...' : 'Unlock'}
+              {isSubmitting ? 'Unlocking...' : 'Unlock & Grant Admin'}
             </Button>
           </form>
         </CardContent>

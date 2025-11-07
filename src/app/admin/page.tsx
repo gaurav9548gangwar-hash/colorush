@@ -30,8 +30,6 @@ import { Label } from "@/components/ui/label"
 import { LogOut, RefreshCw, CheckCircle, XCircle, Trash2, Send } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { errorEmitter } from '@/firebase/error-emitter'
-import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -161,7 +159,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                 <CardTitle>All Users</CardTitle>
                 <div className='flex items-center gap-2'>
                     <p className='text-sm text-muted-foreground'>Total Users: {filteredUsers?.length || 0}</p>
-                    <Button size="icon" variant="ghost" onClick={onUpdate} aria-label="Refresh Users">
+                    <Button size="icon" variant="ghost" onClick={fetchUsers} aria-label="Refresh Users">
                         <RefreshCw className='h-4 w-4' />
                     </Button>
                 </div>
@@ -197,7 +195,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                                     <TableCell className="text-right space-x-2">
-                                        <BalanceDialog user={u} onUpdate={onUpdate} />
+                                        <BalanceDialog user={u} onUpdate={fetchUsers} />
                                         <AlertDialog>
                                             <AlertDialogTrigger asChild>
                                                 <Button size="sm" variant="destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
@@ -310,7 +308,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
         } catch (err: any) {
              toast({ variant: 'destructive', title: 'Processing Failed', description: err.message || 'Could not process request.' });
         } finally {
-            onUpdate();
+            fetchDeposits(); // Refresh list after action
             setIsProcessing(null);
         }
     }
@@ -415,7 +413,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
         } catch (err: any) {
              toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check console for details.' });
         } finally {
-            onUpdate();
+            fetchWithdrawals(); // Refresh list after action
             setIsProcessing(null);
         }
     }

@@ -18,9 +18,9 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
-    // This function will be called when the component mounts
+    // This function will be called when the component mounts or when userId/firestore changes.
     const fetchBets = async () => {
-      // Ensure we have what we need before proceeding
+      // Ensure we have what we need before proceeding.
       if (!firestore || !userId) {
         setIsLoading(false);
         return;
@@ -42,7 +42,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
         const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
         
         // 3. Sort the bets on the client-side (in the browser) by date.
-        // This is reliable and avoids Firestore errors.
+        // This is reliable and avoids Firestore errors related to missing indexes.
         const sortedBets = userBets.sort((a, b) => {
            // Handle both Firestore Timestamps and regular Date objects
            const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;

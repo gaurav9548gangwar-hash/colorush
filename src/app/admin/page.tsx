@@ -234,10 +234,11 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 
         const batch = writeBatch(firestore);
         const requestRef = doc(firestore, 'deposits', request.id);
+        const userRef = doc(firestore, 'users', request.userId);
+
         batch.update(requestRef, { status: newStatus });
 
         if (newStatus === 'approved') {
-            const userRef = doc(firestore, 'users', request.userId);
             batch.update(userRef, { balance: increment(request.amount) });
         }
         
@@ -245,11 +246,22 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
             await batch.commit();
             toast({ title: 'Success', description: `Request has been ${newStatus}.` });
             onUpdate();
-        } catch (err) {
+        } catch (err: any) {
+            let errorPath = requestRef.path;
+            let operation: 'update' | 'write' = 'update';
+            let requestData: any = { status: newStatus };
+
+            // A very basic way to guess which operation failed.
+            // In a real app, you might want to try writes separately.
+            if (err.message.toLowerCase().includes('users')) {
+                errorPath = userRef.path;
+                requestData = { balance: `increment(${request.amount})` };
+            }
+            
             const contextualError = new FirestorePermissionError({
-                path: requestRef.path,
-                operation: 'update',
-                requestResourceData: { status: newStatus },
+                path: errorPath,
+                operation: operation,
+                requestResourceData: requestData,
             });
             errorEmitter.emit('permission-error', contextualError);
             toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check permissions.' });

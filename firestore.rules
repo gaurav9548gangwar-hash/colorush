@@ -17,23 +17,25 @@ service cloud.firestore {
       // A user can create their own profile.
       allow create: if isOwner(userId);
       
-      // Any authenticated user can read, update, or delete any user's data.
-      allow read, update, delete, list: if isAuthenticated();
+      // Any authenticated user can read or list user data.
+      allow read, list: if isAuthenticated();
+      
+      // Any authenticated user can update any user's data (for balance updates by admin).
+      allow update: if isAuthenticated();
+      
+      // Any authenticated user (admin) can delete a user.
+      allow delete: if isAuthenticated();
     }
 
     match /deposits/{depositId} {
       // Any authenticated user can create, read, update, or list deposit requests.
-      allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
-      allow read, list: if isAuthenticated();
-      allow update: if isAuthenticated(); // Admin can update
+      allow create, read, list, update: if isAuthenticated();
       allow delete: if false; // Maintain history
     }
 
      match /withdrawals/{withdrawalId} {
       // Any authenticated user can create, read, update, or list withdrawal requests.
-      allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
-      allow read, list: if isAuthenticated();
-      allow update: if isAuthenticated(); // Admin can update
+      allow create, read, list, update: if isAuthenticated();
       allow delete: if false; // Maintain history
      }
     

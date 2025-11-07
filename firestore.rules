@@ -7,16 +7,10 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    // Helper function: Checks if the user is the owner of a specific document.
+    
+    // Helper function to check ownership.
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // Allow broad access for any authenticated user.
-    // This is NOT recommended for production but will prevent permission errors.
-    function allowAllAuthenticated() {
-      return isAuthenticated();
     }
 
     match /users/{userId} {
@@ -24,34 +18,34 @@ service cloud.firestore {
       allow create: if isOwner(userId);
       
       // Any authenticated user can read, update, or delete any user's data.
-      allow read, update, delete, list: if allowAllAuthenticated();
+      allow read, update, delete, list: if isAuthenticated();
     }
 
     match /deposits/{depositId} {
       // Any authenticated user can create, read, update, or list deposit requests.
       allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
-      allow read, list: if allowAllAuthenticated();
-      allow update: if allowAllAuthenticated(); // Admin can update
+      allow read, list: if isAuthenticated();
+      allow update: if isAuthenticated(); // Admin can update
       allow delete: if false; // Maintain history
     }
 
      match /withdrawals/{withdrawalId} {
       // Any authenticated user can create, read, update, or list withdrawal requests.
       allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
-      allow read, list: if allowAllAuthenticated();
-      allow update: if allowAllAuthenticated(); // Admin can update
+      allow read, list: if isAuthenticated();
+      allow update: if isAuthenticated(); // Admin can update
       allow delete: if false; // Maintain history
      }
     
     match /bets/{betId} {
       // Any authenticated user can manage bets.
-      allow read, write, list: if allowAllAuthenticated();
+      allow read, write, list: if isAuthenticated();
       allow delete: if false; // Maintain history
     }
 
     match /game_rounds/{gameId} {
       // Any authenticated user can read or write game results.
-      allow read, write: if allowAllAuthenticated();
+      allow read, write: if isAuthenticated();
     }
   }
 }

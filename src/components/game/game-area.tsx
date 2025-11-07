@@ -23,28 +23,6 @@ const getWinningColor = (num: number): BetColor => {
   return 'orange'
 }
 
-/**
- * Checks if a user's balance has crossed the 400 threshold and updates the flag.
- * This function does not block or await.
- */
-const checkAndSetThresholdFlag = (firestore: Firestore, userId: string, newBalance: number) => {
-    const userRef = doc(firestore, 'users', userId);
-    getDoc(userRef).then(userDoc => {
-        if (userDoc.exists()) {
-            const userData = userDoc.data() as User;
-            if (!userData.hasReached400 && newBalance >= 400) {
-                // Use setDoc with merge to avoid overwriting other fields
-                setDoc(userRef, { hasReached400: true }, { merge: true }).catch(err => {
-                    console.error("Error setting threshold flag: ", err);
-                });
-            }
-        }
-    }).catch(err => {
-        console.error("Error fetching user doc for threshold check: ", err);
-    });
-};
-
-
 const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
         <path d="M22 2L11 13" />
@@ -308,11 +286,6 @@ export function GameArea() {
                 batch.update(userRef, { 
                     balance: increment(payout.balance),
                 });
-                
-                const userDocForBalance = await getDoc(userRef);
-                const currentBalance = (userDocForBalance.data() as User)?.balance || 0;
-                const newBalance = currentBalance + payout.balance;
-                checkAndSetThresholdFlag(firestore, userId, newBalance);
             }
         }
         

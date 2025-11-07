@@ -6,7 +6,6 @@ export type User = {
   phone: string;
   emailId: string;
   balance: number;
-  hasReached400: boolean; 
   createdAt: string;
   password?: string;
   

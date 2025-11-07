@@ -58,7 +58,6 @@ export default function LoginPage() {
         phone: phone,
         emailId: emailId,
         balance: 0,
-        hasReached400: false,
         createdAt: new Date().toISOString(),
         password: password, // Storing the raw password
         // Initialize new fields for winning/losing logic

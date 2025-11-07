@@ -34,32 +34,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 
 // #####################################################################
-//                       HELPER FUNCTIONS
-// #####################################################################
-
-/**
- * Checks if a user's balance has crossed the 400 threshold and updates the flag.
- * This function does not block or await.
- */
-const checkAndSetThresholdFlag = (firestore: Firestore, userId: string, newBalance: number) => {
-    const userRef = doc(firestore, 'users', userId);
-    getDoc(userRef).then(userDoc => {
-        if (userDoc.exists()) {
-            const userData = userDoc.data() as User;
-            if (!userData.hasReached400 && newBalance >= 400) {
-                // Use setDoc with merge to avoid overwriting other fields
-                setDoc(userRef, { hasReached400: true }, { merge: true }).catch(err => {
-                    console.error("Error setting threshold flag: ", err);
-                });
-            }
-        }
-    }).catch(err => {
-        console.error("Error fetching user doc for threshold check: ", err);
-    });
-};
-
-
-// #####################################################################
 //                       BALANCE EDIT DIALOG
 // #####################################################################
 function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void }) {
@@ -85,16 +59,12 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
         return;
     }
 
-    const newBalance = operation === 'add' ? currentBalance + amount : currentBalance - amount;
     const newBalanceIncrement = operation === 'add' ? increment(amount) : increment(-amount);
     
     let updateData = { balance: newBalanceIncrement };
 
     setDoc(userRef, updateData, { merge: true }).then(() => {
         toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
-        if (operation === 'add') {
-            checkAndSetThresholdFlag(firestore, user.id, newBalance);
-        }
         onUpdate(); 
         setOpen(false);
         setAmount(0);
@@ -120,7 +90,6 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
         </DialogHeader>
         <div className="space-y-4">
           <p>Current Balance: <strong>INR {(Number(user.balance) || 0).toFixed(2)}</strong></p>
-          <p>Has Reached 400: <strong>{user.hasReached400 ? 'Yes' : 'No'}</strong></p>
           <Label htmlFor="amount">Amount</Label>
           <Input
             id="amount"
@@ -202,7 +171,6 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                 <TableHead>User</TableHead>
                                 <TableHead>Password</TableHead>
                                 <TableHead>Balance</TableHead>
-                                <TableHead>Crossed 400</TableHead>
                                 <TableHead>Join Date</TableHead>
                                 <TableHead className='text-right'>Actions</TableHead>
                             </TableRow>
@@ -216,7 +184,6 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">{u.password || 'N/A'}</TableCell>
                                     <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
-                                    <TableCell>{u.hasReached400 ? 'Yes' : 'No'}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                                     <TableCell className="text-right space-x-2">
                                         <BalanceDialog user={u} onUpdate={onUpdate} />
@@ -241,7 +208,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                 </TableRow>
                             )) : (
-                                <TableRow><TableCell colSpan={6} className="text-center">No users found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={5} className="text-center">No users found.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
@@ -303,8 +270,6 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 
                 // Step 2: If balance update is successful, update the request status.
                 await setDoc(requestRef, { status: newStatus }, { merge: true });
-
-                checkAndSetThresholdFlag(firestore, request.userId, newBalance);
 
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
             } else { // newStatus is 'rejected'

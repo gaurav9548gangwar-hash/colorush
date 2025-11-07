@@ -82,9 +82,10 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       
       const userData = userDoc.data() as User;
       const currentBalance = userData.balance || 0;
+      const currentWinningsBalance = userData.winningsBalance || 0;
 
-      if (currentBalance < amount) {
-        toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your balance is too low. You need at least INR ${amount}.` });
+      if ((currentBalance + currentWinningsBalance) < amount) {
+        toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your total balance is too low. You need at least INR ${amount}.` });
         setIsSubmitting(false);
         setOpen(false);
         return;
@@ -92,11 +93,21 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       
       const batch = writeBatch(firestore);
       
-      // When placing a bet, we just deduct from the main balance.
-      // Winnings balance is only for withdrawal tracking.
-      batch.update(userRef, {
-        balance: increment(-amount)
-      });
+      // New logic: Deduct from main balance first, then from winnings if necessary.
+      const deductionFromMain = Math.min(currentBalance, amount);
+      const remainingAmount = amount - deductionFromMain;
+      const deductionFromWinnings = Math.min(currentWinnings, remainingAmount);
+
+      let balanceUpdate = {};
+      if (deductionFromMain > 0 && deductionFromWinnings > 0) {
+          balanceUpdate = { balance: increment(-deductionFromMain), winningsBalance: increment(-deductionFromWinnings) };
+      } else if (deductionFromMain > 0) {
+          balanceUpdate = { balance: increment(-deductionFromMain) };
+      } else if (deductionFromWinnings > 0) {
+          balanceUpdate = { winningsBalance: increment(-deductionFromWinnings) };
+      }
+
+      batch.update(userRef, balanceUpdate);
       
       const newBetRef = doc(betsCollectionRef); 
       const betData: Bet = {
@@ -121,7 +132,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
         const contextualError = new FirestorePermissionError({
             path: error.message.includes("User data not found") ? userRef.path : 'bets',
             operation: error.message.includes("User data not found") ? 'get' : 'create',
-            requestResourceData: { balance: `increment(${-amount})` },
+            requestResourceData: { betAmount: amount },
         });
         errorEmitter.emit('permission-error', contextualError);
         

@@ -8,6 +8,7 @@ export type User = {
   emailId: string;
   balance: number;
   winningsBalance: number; // Amount that is withdrawable
+  hasReached400: boolean; // Flag to track if the user has ever reached a balance of 400
   createdAt: string;
   password?: string; // Stored encoded, for admin verification only.
 };
@@ -58,5 +59,3 @@ export interface WithdrawalRequest {
     status: 'pending' | 'approved' | 'rejected';
     createdAt: Timestamp;
 }
-
-    

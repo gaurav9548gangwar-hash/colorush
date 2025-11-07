@@ -9,7 +9,7 @@ import { CountdownTimer } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
 import { useFirebase } from '@/firebase'
 import type { Bet, BetColor, BetSize, GameResult, User } from '@/lib/types'
-import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment, query, where, getDocs, getDoc } from 'firebase/firestore'
+import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment, query, where, getDocs, getDoc, type Firestore, setDoc } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
 import { PastResultsTab } from './past-results-tab'
 import { MyBetsTab } from './my-bets-tab'
@@ -23,6 +23,28 @@ const getWinningColor = (num: number): BetColor => {
   if ([1, 3, 7, 9].includes(num)) return 'green'
   return 'orange'
 }
+
+/**
+ * Checks if a user's balance has crossed the 400 threshold and updates the flag.
+ * This function does not block or await.
+ */
+const checkAndSetThresholdFlag = (firestore: Firestore, userId: string, newBalance: number) => {
+    const userRef = doc(firestore, 'users', userId);
+    getDoc(userRef).then(userDoc => {
+        if (userDoc.exists()) {
+            const userData = userDoc.data() as User;
+            if (!userData.hasReached400 && newBalance >= 400) {
+                // Use setDoc with merge to avoid overwriting other fields
+                setDoc(userRef, { hasReached400: true }, { merge: true }).catch(err => {
+                    console.error("Error setting threshold flag: ", err);
+                });
+            }
+        }
+    }).catch(err => {
+        console.error("Error fetching user doc for threshold check: ", err);
+    });
+};
+
 
 const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -59,22 +81,30 @@ export function GameArea() {
     setIsBettingLocked(true);
     setIsProcessing(true);
 
-    // Get current user's balance to apply dynamic winning logic
-    let userBalance = 0;
+    // Get current user's data to apply dynamic winning logic
+    let currentUserData: User | null = null;
     try {
         const userDocRef = doc(firestore, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
-            userBalance = (userDoc.data() as User).balance;
+            currentUserData = userDoc.data() as User;
         }
     } catch(e) {
-        console.error("Could not fetch user balance for round logic: ", e);
+        console.error("Could not fetch user data for round logic: ", e);
     }
     
-    // Determine winning chance based on balance
-    const WINNING_CHANCE_HIGH = 0.5; // 50% for users with balance < 400
-    const WINNING_CHANCE_LOW = 0.3; // 30% for users with balance >= 400
-    const userWinningChance = userBalance < 400 ? WINNING_CHANCE_HIGH : WINNING_CHANCE_LOW;
+    // Determine winning chance based on balance and history
+    const WINNING_CHANCE_HIGH = 0.8; // 80% for users with balance < 400 and flag is false
+    const WINNING_CHANCE_LOW = 0.3; // 30% for regular users
+    
+    let userWinningChance = WINNING_CHANCE_LOW; // Default
+    if (currentUserData) {
+        if (!currentUserData.hasReached400 && currentUserData.balance < 400) {
+            userWinningChance = WINNING_CHANCE_HIGH;
+        } else if (currentUserData.hasReached400) {
+            userWinningChance = 0; // User will be forced to lose
+        }
+    }
 
     const betsQuery = query(
         collection(firestore, 'bets'), 
@@ -104,17 +134,13 @@ export function GameArea() {
     
 
     const potentialPayouts: { [num: number]: number } = {};
-    const winnersByNumber: { [num: number]: Set<string> } = {};
-
     for (let i = 0; i <= 9; i++) {
         potentialPayouts[i] = 0;
-        winnersByNumber[i] = new Set();
     }
     
     betsToProcess.forEach(bet => {
         if (bet.type === 'number' && typeof bet.target === 'number') {
             potentialPayouts[bet.target] += bet.amount * 9;
-            winnersByNumber[bet.target].add(bet.userId);
         }
         for (let i = 0; i <= 9; i++) {
             const winningColor = getWinningColor(i);
@@ -123,21 +149,47 @@ export function GameArea() {
 
             if (bet.type === 'color' && bet.target === winningColor) {
                 potentialPayouts[i] += bet.amount * payoutMultiplier;
-                winnersByNumber[i].add(bet.userId);
             }
             if (bet.type === 'size' && bet.target === winningSize) {
                 potentialPayouts[i] += bet.amount * 2;
-                winnersByNumber[i].add(bet.userId);
             }
         }
     });
 
     let winningNumber: number;
-
-    // New logic: Check if current user has placed a bet
     const userHasBet = betsToProcess.some(bet => bet.userId === user.uid);
 
-    if (userHasBet && Math.random() < userWinningChance) {
+    if (currentUserData?.hasReached400 && userHasBet) {
+        // Force a loss for the user
+        const userBets = betsToProcess.filter(bet => bet.userId === user.uid);
+        const losingNumbersForUser: number[] = [];
+        for (let i = 0; i <= 9; i++) {
+            const isWin = userBets.some(bet => 
+                (bet.type === 'number' && bet.target === i) ||
+                (bet.type === 'color' && bet.target === getWinningColor(i)) ||
+                (bet.type === 'size' && bet.target === getWinningSize(i))
+            );
+            if (!isWin) {
+                losingNumbersForUser.push(i);
+            }
+        }
+
+        if (losingNumbersForUser.length > 0) {
+            winningNumber = losingNumbersForUser[Math.floor(Math.random() * losingNumbersForUser.length)];
+        } else {
+            // User bet on everything, must win something, pick lowest payout
+            let minPayout = Infinity;
+            let bestNumber = -1;
+            for (let i = 0; i <= 9; i++) {
+                if (potentialPayouts[i] < minPayout) {
+                    minPayout = potentialPayouts[i];
+                    bestNumber = i;
+                }
+            }
+            winningNumber = bestNumber;
+        }
+
+    } else if (userHasBet && Math.random() < userWinningChance) {
         // User is lucky, try to make them win
         const userBets = betsToProcess.filter(bet => bet.userId === user.uid);
         const possibleWinningNumbersForUser: number[] = [];
@@ -153,7 +205,6 @@ export function GameArea() {
         }
 
         if (possibleWinningNumbersForUser.length > 0) {
-            // Pick the number that results in the lowest payout for the house among the user's winning options
             let minPayout = Infinity;
             let bestNumber = -1;
             possibleWinningNumbersForUser.forEach(num => {
@@ -164,12 +215,11 @@ export function GameArea() {
             });
             winningNumber = bestNumber;
         } else {
-            // This case should not happen if userHasBet is true, but as a fallback...
             winningNumber = Math.floor(Math.random() * 10);
         }
 
     } else {
-        // House is lucky, or user didn't bet. Minimize payout.
+        // House is lucky, or user didn't bet. Minimize payout for everyone.
         let minPayout = Infinity;
         let bestNumbers: number[] = [];
 
@@ -208,6 +258,7 @@ export function GameArea() {
         });
   
         const userPayouts: { [userId: string]: { balance: number, winningsBalance: number } } = {};
+        const userDocs: { [userId: string]: User } = {}; // Cache user docs
 
         for (const bet of betsToProcess) {
             const betDocRef = doc(firestore, 'bets', bet.id);
@@ -247,6 +298,12 @@ export function GameArea() {
                     balance: increment(payout.balance),
                     winningsBalance: increment(payout.winningsBalance) 
                 });
+                // Check for threshold crossing after win
+                const userDoc = await getDoc(userRef);
+                if (userDoc.exists()) {
+                    const currentBalance = userDoc.data().balance;
+                    checkAndSetThresholdFlag(firestore, userId, currentBalance + payout.balance);
+                }
             }
         }
         

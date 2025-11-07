@@ -71,7 +71,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
             path: userRef.path,
             operation: 'update',
             requestResourceData: updateData,
-        } satisfies SecurityRuleContext);
+        });
         errorEmitter.emit('permission-error', contextualError);
     }).then(() => {
         toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
@@ -120,7 +120,12 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
     const [searchTerm, setSearchTerm] = useState('');
 
     const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore, keyForRefresh]);
-    const { data: users, isLoading: isLoadingUsers, error: usersError } = useCollection<User>(usersRef);
+    const { data: users, isLoading: isLoadingUsers, error: usersError, manualRefresh } = useCollection<User>(usersRef);
+    
+    useEffect(() => {
+        manualRefresh();
+    }, [keyForRefresh, manualRefresh]);
+
 
     const filteredUsers = useMemo(() => users?.filter(u => 
         (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -136,7 +141,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
             const contextualError = new FirestorePermissionError({
                 path: userDocRef.path,
                 operation: 'delete',
-            } satisfies SecurityRuleContext);
+            });
             errorEmitter.emit('permission-error', contextualError);
         }).then(() => {
             toast({ title: "User Deleted", description: "The user's data has been removed from Firestore." });
@@ -231,7 +236,12 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
       return query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
     }, [firestore, keyForRefresh]);
 
-    const { data: deposits, isLoading, error } = useCollection<DepositRequest>(depositsRef);
+    const { data: deposits, isLoading, error, manualRefresh } = useCollection<DepositRequest>(depositsRef);
+
+    useEffect(() => {
+        manualRefresh();
+    }, [keyForRefresh, manualRefresh]);
+
 
     const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
@@ -281,13 +291,13 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 }
 
                 await updateDoc(userRef, userUpdateData).catch(err => {
-                    const contextualError = new FirestorePermissionError({ path: userRef.path, operation: 'update', requestResourceData: userUpdateData } satisfies SecurityRuleContext);
+                    const contextualError = new FirestorePermissionError({ path: userRef.path, operation: 'update', requestResourceData: userUpdateData });
                     errorEmitter.emit('permission-error', contextualError);
                     throw err; // Re-throw to stop the chain
                 });
                 
                 await updateDoc(requestRef, { status: newStatus }).catch(err => {
-                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } } satisfies SecurityRuleContext);
+                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } });
                     errorEmitter.emit('permission-error', contextualError);
                     throw err; // Re-throw to stop the chain
                 });
@@ -295,7 +305,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
             } else { // newStatus is 'rejected'
                 await updateDoc(requestRef, { status: newStatus }).catch(err => {
-                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } } satisfies SecurityRuleContext);
+                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } });
                     errorEmitter.emit('permission-error', contextualError);
                     throw err; // Re-throw to stop the chain
                 });
@@ -374,8 +384,13 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
       return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
     },[firestore, keyForRefresh]);
     
-    const { data: withdrawals, isLoading, error } = useCollection<WithdrawalRequest>(withdrawalsRef);
+    const { data: withdrawals, isLoading, error, manualRefresh } = useCollection<WithdrawalRequest>(withdrawalsRef);
     
+    useEffect(() => {
+        manualRefresh();
+    }, [keyForRefresh, manualRefresh]);
+
+
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
         setIsProcessing(request.id);
@@ -403,7 +418,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                 path: errorPath,
                 operation: 'update',
                 requestResourceData: { status: newStatus },
-             } satisfies SecurityRuleContext);
+             });
              errorEmitter.emit('permission-error', contextualError);
              toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check permissions.' });
         } finally {
@@ -493,7 +508,7 @@ function NotificationsTab() {
                 path: 'notifications',
                 operation: 'create',
                 requestResourceData: notificationData,
-            } satisfies SecurityRuleContext);
+            });
             errorEmitter.emit('permission-error', contextualError);
             toast({ variant: 'destructive', title: 'Failed to Send', description: 'Could not send notification. Check permissions.' });
         }).then(() => {
@@ -586,7 +601,7 @@ export default function AdminPage() {
         </Button>
       </header>
       
-      <Tabs defaultValue="users" className="w-full">
+      <Tabs defaultValue="users" className="w-full" onValueChange={forceRefresh}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="deposits">Deposit Requests</TabsTrigger>

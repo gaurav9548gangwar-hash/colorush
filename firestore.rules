@@ -3,69 +3,93 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if the requesting user is an admin
-    // It checks a field on the user's own document
+    // #################################
+    //       HELPER FUNCTIONS
+    // #################################
+
+    // Checks if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Checks if the user's document has the isAdmin flag set to true
     function isAdmin() {
-      // Ensure the user is authenticated before trying to read their document
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
-    // Helper function to check if the user is the owner of the document
+    // Checks if the authenticated user is the owner of a document
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Users collection rules
+    // #################################
+    //        COLLECTION RULES
+    // #################################
+
+    // --- Users Collection ---
     match /users/{userId} {
-      // Admin can list all users
+      // READ: An admin can list/read any user. A user can only read their own document.
       allow list: if isAdmin();
-      // A user can get their own document, or an admin can get any document
       allow get: if isOwner(userId) || isAdmin();
-      // Allow user creation (write) for anyone creating their own user doc
+      
+      // WRITE: A user can create their own document. An admin can update any user document. A user can update their own.
       allow create: if isOwner(userId);
-      // Allow updates only for the owner or an admin
       allow update: if isOwner(userId) || isAdmin();
-      // Only admin can delete a user document
+      
+      // DELETE: Only an admin can delete a user document.
       allow delete: if isAdmin();
     }
     
-    // Bets: Users can create and read their own bets. Admin can read any bet and manage all.
+    // --- Bets Collection ---
     match /bets/{betId} {
-      allow list: if isAdmin();
+      // READ: An admin can list/read all bets. A user can only read bets where their userId matches.
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
-      allow create: if request.resource.data.userId == request.auth.uid;
-      // Only admin can update or delete bet records directly. Payouts are handled by game logic.
+      allow list: if isAdmin() || (request.query.where.field == "userId" && request.query.where.value == request.auth.uid);
+      
+      // WRITE: A user can only create a bet for themselves.
+      allow create: if isOwner(request.resource.data.userId);
+      
+      // UPDATE/DELETE: Only admin can update or delete bets. Game logic updates are handled by admin/backend logic.
       allow update, delete: if isAdmin();
     }
 
-    // Game Rounds: Authenticated users can read game results. Only admin can write them.
-    // This prevents players from manipulating game outcomes.
+    // --- Game Rounds Collection ---
     match /game_rounds/{roundId} {
-      allow list, get: if request.auth != null;
-      allow write: if isAdmin();
+      // READ: Any authenticated user can read game results.
+      allow list, get: if isAuthenticated();
+      
+      // WRITE: Only an admin can write/create game results. This prevents players from manipulating outcomes.
+      allow create, update, delete: if isAdmin();
     }
 
-    // Deposits: Users can create/read their own deposit requests. Admin can manage all.
+    // --- Deposits Collection ---
     match /deposits/{depositId} {
-      // An Admin can list all deposits. A user can only see their own deposits.
-      allow list: if isAdmin() || (request.query.where.field == "userId" && request.query.where.value == request.auth.uid);
+      // READ: Admin can list all deposits. A user can only list/get their own deposits.
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
-      allow create: if request.resource.data.userId == request.auth.uid;
+      allow list: if isAdmin() || (request.query.where.field == "userId" && request.query.where.value == request.auth.uid);
+
+      // WRITE: A user can create their own deposit request. Only admin can update (approve/reject).
+      allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isAdmin();
     }
 
-    // Withdrawals: Users can create/read their own withdrawal requests. Admin can manage all.
+    // --- Withdrawals Collection ---
     match /withdrawals/{withdrawalId} {
-      // An Admin can list all withdrawals. A user can only see their own withdrawals.
-      allow list: if isAdmin() || (request.query.where.field == "userId" && request.query.where.value == request.auth.uid);
+      // READ: Admin can list all withdrawals. A user can only list/get their own withdrawals.
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
-      allow create: if request.resource.data.userId == request.auth.uid;
+      allow list: if isAdmin() || (request.query.where.field == "userId" && request.query.where.value == request.auth.uid);
+      
+      // WRITE: A user can create their own withdrawal request. Only admin can update (approve/reject).
+      allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isAdmin();
     }
     
-    // Notifications: Can be read by any authenticated user, but only created/managed by an admin.
+    // --- Notifications Collection ---
     match /notifications/{notificationId} {
-        allow list, get: if request.auth != null;
+        // READ: Any authenticated user can read notifications.
+        allow list, get: if isAuthenticated();
+        
+        // WRITE: Only an admin can create, update, or delete notifications.
         allow create, update, delete: if isAdmin();
     }
 

@@ -8,19 +8,20 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // Helper function to check ownership.
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // In this app, any authenticated user can act as an admin.
+    // In a real app, this would check for a specific UID or custom claim.
+    function isAdmin() {
+      return isAuthenticated();
     }
 
     match /users/{userId} {
       // A user can create their own profile.
-      allow create: if isOwner(userId);
+      allow create: if request.auth.uid == userId;
       
-      // Any authenticated user can read or list user data.
+      // Any authenticated user (admin or user for their own data) can read user data.
       allow read, list: if isAuthenticated();
       
-      // Any authenticated user can update any user's data (for balance updates by admin).
+      // Any authenticated user (admin) can update any user's data for balance changes.
       allow update: if isAuthenticated();
       
       // Any authenticated user (admin) can delete a user.

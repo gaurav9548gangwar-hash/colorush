@@ -221,6 +221,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
 function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number, onUpdate: () => void }) {
     const { firestore } = useFirebase();
     const { toast } = useToast();
+    const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
     const depositsRef = useMemoFirebase(() => {
       if (!firestore) return null;
@@ -231,40 +232,55 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 
     const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
+        setIsProcessing(request.id);
 
-        const batch = writeBatch(firestore);
         const requestRef = doc(firestore, 'deposits', request.id);
         const userRef = doc(firestore, 'users', request.userId);
 
-        batch.update(requestRef, { status: newStatus });
-
         if (newStatus === 'approved') {
-            batch.update(userRef, { balance: increment(request.amount) });
-        }
-        
-        try {
-            await batch.commit();
-            toast({ title: 'Success', description: `Request has been ${newStatus}.` });
-            onUpdate();
-        } catch (err: any) {
-            let errorPath = requestRef.path;
-            let operation: 'update' | 'write' = 'update';
-            let requestData: any = { status: newStatus };
+            try {
+                // Step 1: Update user balance
+                await updateDoc(userRef, { balance: increment(request.amount) });
 
-            // A very basic way to guess which operation failed.
-            // In a real app, you might want to try writes separately.
-            if (err.message.toLowerCase().includes('users')) {
-                errorPath = userRef.path;
-                requestData = { balance: `increment(${request.amount})` };
+                // Step 2: If balance update is successful, update request status
+                await updateDoc(requestRef, { status: newStatus });
+                
+                toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
+                onUpdate();
+            } catch (err: any) {
+                const isUserUpdateError = err.message.toLowerCase().includes('users');
+                const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
+                const operation: 'update' = 'update';
+                const requestData = isUserUpdateError 
+                    ? { balance: `increment(${request.amount})` } 
+                    : { status: newStatus };
+
+                const contextualError = new FirestorePermissionError({
+                    path: errorPath,
+                    operation: operation,
+                    requestResourceData: requestData,
+                });
+                errorEmitter.emit('permission-error', contextualError);
+                toast({ variant: 'destructive', title: 'Error', description: `Could not process approval. Failed to update ${isUserUpdateError ? 'user balance' : 'request status'}.` });
+            } finally {
+                setIsProcessing(null);
             }
-            
-            const contextualError = new FirestorePermissionError({
-                path: errorPath,
-                operation: operation,
-                requestResourceData: requestData,
-            });
-            errorEmitter.emit('permission-error', contextualError);
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check permissions.' });
+        } else { // newStatus is 'rejected'
+             try {
+                await updateDoc(requestRef, { status: newStatus });
+                toast({ title: 'Success', description: `Request has been ${newStatus}.` });
+                onUpdate();
+            } catch (err: any) {
+                 const contextualError = new FirestorePermissionError({
+                    path: requestRef.path,
+                    operation: 'update',
+                    requestResourceData: { status: newStatus },
+                });
+                errorEmitter.emit('permission-error', contextualError);
+                toast({ variant: 'destructive', title: 'Error', description: 'Could not reject request. Check permissions.' });
+            } finally {
+                setIsProcessing(null);
+            }
         }
     }
 
@@ -303,8 +319,8 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                                     <TableCell>{req.transactionId}</TableCell>
                                     <TableCell>{formatDate(req.createdAt)}</TableCell>
                                     <TableCell className="text-right space-x-2">
-                                        <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
-                                        <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
+                                        <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')} disabled={isProcessing === req.id}><CheckCircle className="mr-2"/>Approve</Button>
+                                        <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')} disabled={isProcessing === req.id}><XCircle className="mr-2"/>Reject</Button>
                                     </TableCell>
                                 </TableRow>
                             )) : (

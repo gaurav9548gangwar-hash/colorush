@@ -16,10 +16,10 @@ import {
   type Firestore,
   addDoc,
   serverTimestamp,
+  getDocs,
 } from 'firebase/firestore'
-import { useFirebase, useMemoFirebase } from '@/firebase'
+import { useFirebase } from '@/firebase'
 import type { User, DepositRequest, WithdrawalRequest, Notification } from '@/lib/types'
-import { useCollection } from '@/firebase/firestore/use-collection'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -67,12 +67,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
     const updateData = { balance: newBalanceIncrement };
 
     updateDoc(userRef, updateData).catch(error => {
-        const contextualError = new FirestorePermissionError({
-            path: userRef.path,
-            operation: 'update',
-            requestResourceData: updateData,
-        });
-        errorEmitter.emit('permission-error', contextualError);
+        toast({ variant: 'destructive', title: 'Update Failed', description: 'Could not update balance. Check permissions.' });
     }).then(() => {
         toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
         onUpdate(); 
@@ -118,14 +113,29 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
     const { firestore } = useFirebase();
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
+    const [users, setUsers] = useState<User[]>([]);
+    const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+    const [usersError, setUsersError] = useState<Error | null>(null);
 
-    const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-    const { data: users, isLoading: isLoadingUsers, error: usersError, manualRefresh } = useCollection<User>(usersQuery);
-    
+    const fetchUsers = useCallback(async () => {
+        if (!firestore) return;
+        setIsLoadingUsers(true);
+        setUsersError(null);
+        try {
+            const usersSnapshot = await getDocs(collection(firestore, 'users'));
+            const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+            setUsers(usersList);
+        } catch (error: any) {
+            console.error("Error fetching users: ", error);
+            setUsersError(error);
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    }, [firestore]);
+
     useEffect(() => {
-        if(usersQuery) manualRefresh();
-    }, [keyForRefresh, manualRefresh, usersQuery]);
-
+        fetchUsers();
+    }, [keyForRefresh, fetchUsers]);
 
     const filteredUsers = useMemo(() => users?.filter(u => 
         (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -138,13 +148,9 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
         const userDocRef = doc(firestore, 'users', userId);
 
         deleteDoc(userDocRef).catch(error => {
-            const contextualError = new FirestorePermissionError({
-                path: userDocRef.path,
-                operation: 'delete',
-            });
-            errorEmitter.emit('permission-error', contextualError);
+            toast({ variant: 'destructive', title: 'Delete Failed', description: 'Could not delete user. Check permissions.' });
         }).then(() => {
-            toast({ title: "User Deleted", description: "The user's data has been removed from Firestore." });
+            toast({ title: "User Deleted", description: "The user's data has been removed." });
             onUpdate(); // Refresh the user list
         });
     };
@@ -168,7 +174,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
                 {isLoadingUsers && <p className="text-center py-4">Loading users...</p>}
-                {usersError && <p className="text-destructive text-center py-4">Error loading users. Check security rules and console.</p>}
+                {usersError && <p className="text-destructive text-center py-4">Error loading users. Check console for details.</p>}
                 {!isLoadingUsers && !usersError && (
                     <Table>
                         <TableHeader>
@@ -200,8 +206,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                                 <AlertDialogHeader>
                                                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                                     <AlertDialogDescription>
-                                                        This action cannot be undone. This will permanently delete the user's data from the database. 
-                                                        Their authentication record will remain, but they won't be able to use the app.
+                                                        This action cannot be undone. This will permanently delete the user's data from the database.
                                                     </AlertDialogDescription>
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
@@ -230,17 +235,30 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
     const { firestore } = useFirebase();
     const { toast } = useToast();
     const [isProcessing, setIsProcessing] = useState<string | null>(null);
+    const [deposits, setDeposits] = useState<DepositRequest[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
 
-    const depositsQuery = useMemoFirebase(() => {
-      if (!firestore) return null;
-      return query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
+    const fetchDeposits = useCallback(async () => {
+        if (!firestore) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            const q = query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
+            const snapshot = await getDocs(q);
+            const depositsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DepositRequest));
+            setDeposits(depositsList);
+        } catch (e: any) {
+            console.error("Error fetching deposits: ", e);
+            setError(e);
+        } finally {
+            setIsLoading(false);
+        }
     }, [firestore]);
-
-    const { data: deposits, isLoading, error, manualRefresh } = useCollection<DepositRequest>(depositsQuery);
-
+    
     useEffect(() => {
-        if(depositsQuery) manualRefresh();
-    }, [keyForRefresh, manualRefresh, depositsQuery]);
+        fetchDeposits();
+    }, [keyForRefresh, fetchDeposits]);
 
 
     const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
@@ -253,9 +271,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
         try {
             if (newStatus === 'approved') {
                  const userDoc = await getDoc(userRef);
-                 if (!userDoc.exists()) {
-                    throw new Error("User document not found.");
-                 }
+                 if (!userDoc.exists()) throw new Error("User document not found.");
                  const userData = userDoc.data() as User;
                  const newBalance = (userData.balance || 0) + request.amount;
 
@@ -264,56 +280,35 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                     depositCount: increment(1)
                  };
                  
-                 // If user is in losing phase, a new deposit resets them to winning phase.
                  if (!userData.inWinningPhase) {
                     userUpdateData.inWinningPhase = true;
                     userUpdateData.initialDeposit = request.amount;
                     userUpdateData.targetBalance = newBalance * 2;
                     userUpdateData.betsSinceLastWin = 0;
                  } else if (userData.initialDeposit === 0) {
-                    // This is the first deposit for a new user
                     userUpdateData.initialDeposit = request.amount;
                     userUpdateData.targetBalance = newBalance * 2;
                  }
 
-                // Award referral bonus on first deposit
                 if (userData.depositCount === 0 && userData.referredBy) {
                     const referrerRef = doc(firestore, 'users', userData.referredBy);
                     const referrerDoc = await getDoc(referrerRef);
                     if (referrerDoc.exists()) {
-                         updateDoc(referrerRef, { balance: increment(20) }).catch(err => {
-                            const contextualError = new FirestorePermissionError({ path: referrerRef.path, operation: 'update' } satisfies SecurityRuleContext);
-                            errorEmitter.emit('permission-error', contextualError);
-                         }).then(() => {
-                            toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
-                         });
+                         await updateDoc(referrerRef, { balance: increment(20) });
+                         toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
                     }
                 }
 
-                await updateDoc(userRef, userUpdateData).catch(err => {
-                    const contextualError = new FirestorePermissionError({ path: userRef.path, operation: 'update', requestResourceData: userUpdateData });
-                    errorEmitter.emit('permission-error', contextualError);
-                    throw err; // Re-throw to stop the chain
-                });
-                
-                await updateDoc(requestRef, { status: newStatus }).catch(err => {
-                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } });
-                    errorEmitter.emit('permission-error', contextualError);
-                    throw err; // Re-throw to stop the chain
-                });
-
+                await updateDoc(userRef, userUpdateData);
+                await updateDoc(requestRef, { status: newStatus });
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
+
             } else { // newStatus is 'rejected'
-                await updateDoc(requestRef, { status: newStatus }).catch(err => {
-                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } });
-                    errorEmitter.emit('permission-error', contextualError);
-                    throw err; // Re-throw to stop the chain
-                });
+                await updateDoc(requestRef, { status: newStatus });
                 toast({ title: 'Success', description: `Request has been ${newStatus}.` });
             }
         } catch (err: any) {
-            // Errors are already emitted in the .catch blocks
-             toast({ variant: 'destructive', title: 'Processing Failed', description: 'Could not process request. Check permissions.' });
+             toast({ variant: 'destructive', title: 'Processing Failed', description: err.message || 'Could not process request.' });
         } finally {
             onUpdate();
             setIsProcessing(null);
@@ -322,10 +317,8 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 
     const formatDate = (timestamp: Timestamp | Date | string | undefined) => {
         if (!timestamp) return 'N/A';
-        if (typeof (timestamp as Timestamp).toDate === 'function') {
-            return (timestamp as Timestamp).toDate().toLocaleString();
-        }
-        return new Date(timestamp as any).toLocaleString();
+        const date = (timestamp as Timestamp)?.toDate ? (timestamp as Timestamp).toDate() : new Date(timestamp as any);
+        return date.toLocaleString();
     }
 
     return (
@@ -377,18 +370,30 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
     const { firestore } = useFirebase();
     const { toast } = useToast();
     const [isProcessing, setIsProcessing] = useState<string | null>(null);
-
-
-    const withdrawalsQuery = useMemoFirebase(() => {
-      if (!firestore) return null;
-      return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
-    },[firestore]);
+    const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
     
-    const { data: withdrawals, isLoading, error, manualRefresh } = useCollection<WithdrawalRequest>(withdrawalsQuery);
+    const fetchWithdrawals = useCallback(async () => {
+        if (!firestore) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            const q = query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
+            const snapshot = await getDocs(q);
+            const withdrawalsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithdrawalRequest));
+            setWithdrawals(withdrawalsList);
+        } catch (e: any) {
+            console.error("Error fetching withdrawals: ", e);
+            setError(e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [firestore]);
     
     useEffect(() => {
-        if(withdrawalsQuery) manualRefresh();
-    }, [keyForRefresh, manualRefresh, withdrawalsQuery]);
+        fetchWithdrawals();
+    }, [keyForRefresh, fetchWithdrawals]);
 
 
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
@@ -400,39 +405,25 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
 
         try {
             if (newStatus === 'approved') {
-                // On approval, we only need to update the request status.
-                // The amount was already deducted when the user made the request.
                 await updateDoc(requestRef, { status: 'approved' });
                 toast({ title: 'Success', description: `Request has been approved.` });
-
             } else { // 'rejected'
-                // If rejected, we must refund the amount to the user's balance.
                 await updateDoc(userRef, { balance: increment(request.amount) });
                 await updateDoc(requestRef, { status: 'rejected' });
                 toast({ title: 'Success', description: `Request has been rejected and amount refunded.` });
             }
         } catch (err: any) {
-             const isUserUpdateError = err.message.toLowerCase().includes('users');
-             const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
-             const contextualError = new FirestorePermissionError({
-                path: errorPath,
-                operation: 'update',
-                requestResourceData: { status: newStatus },
-             });
-             errorEmitter.emit('permission-error', contextualError);
-             toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check permissions.' });
+             toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check console for details.' });
         } finally {
             onUpdate();
-             setIsProcessing(null);
+            setIsProcessing(null);
         }
     }
 
     const formatDate = (timestamp: Timestamp | Date | string | undefined) => {
         if (!timestamp) return 'N/A';
-        if (typeof (timestamp as Timestamp).toDate === 'function') {
-            return (timestamp as Timestamp).toDate().toLocaleString();
-        }
-        return new Date(timestamp as any).toLocaleString();
+        const date = (timestamp as Timestamp)?.toDate ? (timestamp as Timestamp).toDate() : new Date(timestamp as any);
+        return date.toLocaleString();
     }
 
     return (
@@ -504,12 +495,6 @@ function NotificationsTab() {
         };
 
         addDoc(collection(firestore, 'notifications'), notificationData).catch(error => {
-            const contextualError = new FirestorePermissionError({
-                path: 'notifications',
-                operation: 'create',
-                requestResourceData: notificationData,
-            });
-            errorEmitter.emit('permission-error', contextualError);
             toast({ variant: 'destructive', title: 'Failed to Send', description: 'Could not send notification. Check permissions.' });
         }).then((docRef) => {
             if (docRef) {
@@ -627,5 +612,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    

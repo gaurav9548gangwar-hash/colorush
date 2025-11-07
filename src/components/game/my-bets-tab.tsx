@@ -1,14 +1,11 @@
 'use client'
 
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState, useCallback } from 'react'
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore'
 import { useFirebase } from '@/firebase'
 import type { Bet } from '@/lib/types'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { FirestoreError } from 'firebase/firestore'
-import { FirestorePermissionError } from '@/firebase/errors'
-import { errorEmitter } from '@/firebase/error-emitter'
 
 interface MyBetsTabProps {
   userId: string
@@ -20,38 +17,34 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  useEffect(() => {
-    const fetchBets = async () => {
-      if (!firestore || !userId) {
-        setIsLoading(false)
-        return
-      }
-      setIsLoading(true)
-      setError(null)
-      
-      try {
-        const betsQuery = query(
-          collection(firestore, 'bets'),
-          where('userId', '==', userId)
-        );
-        const querySnapshot = await getDocs(betsQuery)
-        const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet))
-        setBets(userBets)
-      } catch (err) {
-        console.error("Error fetching bets: ", err)
-        const contextualError = new FirestorePermissionError({
-            path: `bets`,
-            operation: 'list',
-        });
-        errorEmitter.emit('permission-error', contextualError);
-        setError(contextualError)
-      } finally {
-        setIsLoading(false)
-      }
+  const fetchBets = useCallback(async () => {
+    if (!firestore || !userId) {
+      setIsLoading(false)
+      return
     }
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const betsQuery = query(
+        collection(firestore, 'bets'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      const querySnapshot = await getDocs(betsQuery)
+      const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet))
+      setBets(userBets)
+    } catch (err: any) {
+      console.error("Error fetching bets: ", err)
+      setError(err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [firestore, userId]);
 
+  useEffect(() => {
     fetchBets()
-  }, [firestore, userId])
+  }, [fetchBets])
 
   const renderTarget = (bet: Bet) => {
     const baseClasses = "px-2 py-1 rounded-md text-xs font-bold text-white"
@@ -78,16 +71,6 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
       }
   }
 
-  // Sort bets manually on the client-side
-  const sortedBets = useMemo(() => {
-    if (!bets) return [];
-    return [...bets].sort((a, b) => {
-      const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
-      const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
-      return dateB.getTime() - dateA.getTime();
-    });
-  }, [bets]);
-
   if (isLoading) {
     return <p className="text-center py-4">Loading your bets...</p>
   }
@@ -96,7 +79,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
     return <p className="text-center py-4 text-destructive">Error loading your bets. Check console.</p>
   }
 
-  if (!sortedBets || sortedBets.length === 0) {
+  if (!bets || bets.length === 0) {
     return <p className="text-center py-4 text-muted-foreground">You haven't placed any bets yet.</p>
   }
 
@@ -111,7 +94,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedBets.map(bet => (
+          {bets.map(bet => (
             <TableRow key={bet.id}>
               <TableCell>{bet.roundId.substring(9, 13)}</TableCell>
               <TableCell>{renderTarget(bet)}</TableCell>

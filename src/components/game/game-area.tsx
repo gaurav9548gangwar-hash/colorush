@@ -266,7 +266,7 @@ export function GameArea() {
             endedAt: serverTimestamp()
         });
   
-        const userPayouts: { [userId: string]: { balance: number, winnings: number } } = {};
+        const userPayouts: { [userId: string]: { balance: number } } = {};
         const userWinLoss: { [userId: string]: 'win' | 'loss' } = {};
 
         for (const bet of betsToProcess) {
@@ -292,11 +292,9 @@ export function GameArea() {
     
             if (hasWon) {
                 if (!userPayouts[bet.userId]) {
-                    userPayouts[bet.userId] = { balance: 0, winnings: 0 };
+                    userPayouts[bet.userId] = { balance: 0 };
                 }
-                const halfPayout = payout / 2;
-                userPayouts[bet.userId].balance += halfPayout;
-                userPayouts[bet.userId].winnings += halfPayout;
+                userPayouts[bet.userId].balance += payout;
                 userWinLoss[bet.userId] = 'win';
             } else if(userWinLoss[bet.userId] !== 'win') {
                  userWinLoss[bet.userId] = 'loss';
@@ -305,11 +303,10 @@ export function GameArea() {
 
         for (const userId in userPayouts) {
             const payout = userPayouts[userId];
-            if (payout.balance > 0 || payout.winnings > 0) {
+            if (payout.balance > 0) {
                 const userRef = doc(firestore, "users", userId);
                 batch.update(userRef, { 
                     balance: increment(payout.balance),
-                    winningsBalance: increment(payout.winnings),
                 });
                 
                 const userDocForBalance = await getDoc(userRef);

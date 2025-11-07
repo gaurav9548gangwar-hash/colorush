@@ -6,7 +6,6 @@ export type User = {
   phone: string;
   emailId: string;
   balance: number;
-  winningsBalance: number; // Amount won from bets, can be withdrawn
   hasReached400: boolean; 
   createdAt: string;
   password?: string;

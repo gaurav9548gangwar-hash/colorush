@@ -120,7 +120,6 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
         </DialogHeader>
         <div className="space-y-4">
           <p>Current Balance: <strong>INR {(Number(user.balance) || 0).toFixed(2)}</strong></p>
-          <p>Current Winnings: <strong>INR {(Number(user.winningsBalance) || 0).toFixed(2)}</strong></p>
           <p>Has Reached 400: <strong>{user.hasReached400 ? 'Yes' : 'No'}</strong></p>
           <Label htmlFor="amount">Amount</Label>
           <Input
@@ -132,8 +131,8 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
           />
         </div>
         <DialogFooter className="flex-row justify-end space-x-2">
-          <Button onClick={() => handleBalanceUpdate('add')} disabled={isSubmitting}>Add to Main Balance</Button>
-          <Button variant="destructive" onClick={() => handleBalanceUpdate('deduct')} disabled={isSubmitting}>Deduct from Main Balance</Button>
+          <Button onClick={() => handleBalanceUpdate('add')} disabled={isSubmitting}>Add Balance</Button>
+          <Button variant="destructive" onClick={() => handleBalanceUpdate('deduct')} disabled={isSubmitting}>Deduct Balance</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -203,7 +202,6 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                 <TableHead>User</TableHead>
                                 <TableHead>Password</TableHead>
                                 <TableHead>Balance</TableHead>
-                                <TableHead>Winnings</TableHead>
                                 <TableHead>Crossed 400</TableHead>
                                 <TableHead>Join Date</TableHead>
                                 <TableHead className='text-right'>Actions</TableHead>
@@ -218,7 +216,6 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">{u.password || 'N/A'}</TableCell>
                                     <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
-                                    <TableCell>INR {(Number(u.winningsBalance) || 0).toFixed(2)}</TableCell>
                                     <TableCell>{u.hasReached400 ? 'Yes' : 'No'}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                                     <TableCell className="text-right space-x-2">
@@ -244,7 +241,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                 </TableRow>
                             )) : (
-                                <TableRow><TableCell colSpan={7} className="text-center">No users found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={6} className="text-center">No users found.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
@@ -409,10 +406,9 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                 toast({ title: 'Success', description: `Request has been approved.` });
 
             } else { // 'rejected'
-                // If rejected, we must refund the amount to the user's balance and winnings balance.
+                // If rejected, we must refund the amount to the user's balance.
                 await setDoc(userRef, { 
                     balance: increment(request.amount),
-                    winningsBalance: increment(request.amount),
                 }, { merge: true });
 
                 await setDoc(requestRef, { status: 'rejected' }, { merge: true });

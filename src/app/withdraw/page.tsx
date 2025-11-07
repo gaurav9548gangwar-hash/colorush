@@ -55,11 +55,11 @@ export default function WithdrawPage() {
         return
     }
 
-    if (amount > userData.winningsBalance) {
+    if (amount > userData.balance) {
          toast({
             variant: 'destructive',
-            title: 'Insufficient Withdrawable Balance',
-            description: `You can only withdraw from your winnings. Your withdrawable balance is INR ${userData.winningsBalance.toFixed(2)}.`
+            title: 'Insufficient Balance',
+            description: `You cannot withdraw more than your available balance of INR ${userData.balance.toFixed(2)}.`
         })
         return
     }
@@ -90,10 +90,9 @@ export default function WithdrawPage() {
         // First, create the withdrawal request
         await addDoc(collection(firestore, 'withdrawals'), withdrawalData);
 
-        // Then, deduct the amount from both total balance and winnings balance
+        // Then, deduct the amount from the total balance
         await updateDoc(userRef, {
             balance: increment(-Number(amount)),
-            winningsBalance: increment(-Number(amount)),
         });
 
         toast({
@@ -135,15 +134,14 @@ export default function WithdrawPage() {
                 <ArrowLeft />
             </Button>
           <CardTitle className="text-center pt-8">Withdraw Funds</CardTitle>
-          <CardDescription className="text-center">Request a withdrawal from your winnings.</CardDescription>
+          <CardDescription className="text-center">Request a withdrawal to your UPI ID.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-            <Alert variant={userData && userData.winningsBalance < MIN_WITHDRAWAL ? 'destructive' : 'default'}>
+            <Alert variant={userData && userData.balance < MIN_WITHDRAWAL ? 'destructive' : 'default'}>
                 <AlertTitle className="font-bold">Withdrawal Rules</AlertTitle>
                 <AlertDescription>
-                    <p>You can only withdraw your profit/winnings.</p>
                     <p>Minimum withdrawal amount is <strong>INR {MIN_WITHDRAWAL}</strong>.</p>
-                    <p>Your current withdrawable balance is <strong>INR {(userData?.winningsBalance || 0).toFixed(2)}</strong>.</p>
+                    <p>Your current available balance is <strong>INR {(userData?.balance || 0).toFixed(2)}</strong>.</p>
                 </AlertDescription>
             </Alert>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -169,7 +167,7 @@ export default function WithdrawPage() {
                         required
                     />
                 </div>
-                 <Button type="submit" className="w-full" disabled={isSubmitting || (userData?.winningsBalance || 0) < MIN_WITHDRAWAL}>
+                 <Button type="submit" className="w-full" disabled={isSubmitting || (userData?.balance || 0) < MIN_WITHDRAWAL}>
                     {isSubmitting ? 'Submitting Request...' : 'Submit Request'}
                 </Button>
             </form>

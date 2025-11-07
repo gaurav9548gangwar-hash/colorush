@@ -79,9 +79,8 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       }
       
       const userData = userDoc.data() as User;
-      const totalBalance = userData.balance + userData.winningsBalance;
 
-      if (totalBalance < amount) {
+      if (userData.balance < amount) {
         toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your total balance is too low. You need at least INR ${amount}.` });
         setIsSubmitting(false);
         setOpen(false);
@@ -103,13 +102,8 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       await addDoc(collection(firestore, 'bets'), betData);
 
       // Step 2: If bet creation is successful, then deduct the balance.
-      // Prioritize deducting from main balance, then winnings balance.
-      const mainBalanceDeduction = Math.min(userData.balance, amount);
-      const winningsBalanceDeduction = amount - mainBalanceDeduction;
-
       await updateDoc(userRef, {
-          balance: increment(-mainBalanceDeduction),
-          winningsBalance: increment(-winningsBalanceDeduction),
+          balance: increment(-amount),
       });
 
 
@@ -117,11 +111,10 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       setOpen(false)
 
     } catch (error: any) {
-        // Since we are not using batch, the error can be from getDoc, addDoc, or updateDoc
-        const betData = { userId: user.uid, roundId, amount, target, type, status: 'pending', payout: 0 };
+        const betData = { userId: user.uid, roundId, amount, target, type, status: 'pending', payout: 0, createdAt: new Date() };
         const contextualError = new FirestorePermissionError({
-            path: error.message.includes("User data not found") ? userRef.path : 'bets',
-            operation: 'write', // Generic 'write' as it could be create or update
+            path: 'bets',
+            operation: 'create',
             requestResourceData: betData,
         });
         errorEmitter.emit('permission-error', contextualError);

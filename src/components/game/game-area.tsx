@@ -273,7 +273,6 @@ export function GameArea() {
             const betDocRef = doc(firestore, 'bets', bet.id);
             let hasWon = false;
             let payout = 0;
-            let profit = 0;
     
             if (bet.type === 'number' && bet.target === resultData.winningNumber) {
                 hasWon = true;
@@ -295,9 +294,9 @@ export function GameArea() {
                 if (!userPayouts[bet.userId]) {
                     userPayouts[bet.userId] = { balance: 0, winnings: 0 };
                 }
-                profit = payout - bet.amount;
-                userPayouts[bet.userId].balance += bet.amount; // Return original bet amount to main balance
-                userPayouts[bet.userId].winnings += profit; // Add only profit to winnings balance
+                const halfPayout = payout / 2;
+                userPayouts[bet.userId].balance += halfPayout;
+                userPayouts[bet.userId].winnings += halfPayout;
                 userWinLoss[bet.userId] = 'win';
             } else if(userWinLoss[bet.userId] !== 'win') {
                  userWinLoss[bet.userId] = 'loss';

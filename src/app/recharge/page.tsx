@@ -112,7 +112,7 @@ export default function RechargePage() {
         toast({
             variant: 'destructive',
             title: 'Submission Failed',
-            description: "Check console for details."
+            description: "Could not submit your request. Check console for details."
         })
       })
       .finally(() => {
@@ -170,7 +170,7 @@ export default function RechargePage() {
                    <div className="space-y-2">
                       <Label htmlFor="transactionId">UPI Transaction ID / Ref. No.</Label>
                       <Input 
-                          id="transactionId" 
+                          id="transactionId" _
                           type="text"
                           value={transactionId}
                           onChange={(e) => setTransactionId(e.target.value)}

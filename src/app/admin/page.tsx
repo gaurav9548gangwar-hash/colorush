@@ -248,7 +248,9 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
                 onUpdate();
             } catch (err: any) {
+                // Check if the error happened during the user balance update.
                 const isUserUpdateError = err.message.toLowerCase().includes('users');
+                
                 const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
                 const operation: 'update' = 'update';
                 const requestData = isUserUpdateError 
@@ -261,7 +263,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                     requestResourceData: requestData,
                 });
                 errorEmitter.emit('permission-error', contextualError);
-                toast({ variant: 'destructive', title: 'Error', description: `Could not process approval. Failed to update ${isUserUpdateError ? 'user balance' : 'request status'}.` });
+                toast({ variant: 'destructive', title: 'Error', description: `Could not process approval. Failed to update ${isUserUpdateError ? 'user balance' : 'request status'}. Check permissions.` });
             } finally {
                 setIsProcessing(null);
             }
@@ -353,8 +355,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
 
         const userRef = doc(firestore, 'users', request.userId);
         const requestRef = doc(firestore, 'withdrawals', request.id);
-        const batch = writeBatch(firestore);
-
+        
         try {
             if (newStatus === 'approved') {
                 const userDoc = await getDoc(userRef);
@@ -362,21 +363,24 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                 
                 if (currentBalance < request.amount) {
                     toast({ variant: 'destructive', title: 'Insufficient Balance', description: 'User does not have enough funds for this withdrawal.' });
-                    batch.update(requestRef, { status: 'rejected', reason: 'Insufficient balance' });
+                    await updateDoc(requestRef, { status: 'rejected', reason: 'Insufficient balance' });
                 } else {
-                    batch.update(userRef, { balance: increment(-request.amount) });
-                    batch.update(requestRef, { status: 'approved' });
+                    // This is a batch write which can cause issues with security rules.
+                    // For withdrawals, let's also do it sequentially.
+                    await updateDoc(userRef, { balance: increment(-request.amount) });
+                    await updateDoc(requestRef, { status: 'approved' });
                 }
             } else { 
-                batch.update(requestRef, { status: 'rejected' });
+                await updateDoc(requestRef, { status: 'rejected' });
             }
 
-            await batch.commit();
             toast({ title: 'Success', description: `Request has been processed.` });
             onUpdate();
-        } catch (err) {
+        } catch (err: any) {
+             const isUserUpdateError = err.message.toLowerCase().includes('users');
+             const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
              const contextualError = new FirestorePermissionError({
-                path: requestRef.path,
+                path: errorPath,
                 operation: 'update',
                 requestResourceData: { status: newStatus },
              });

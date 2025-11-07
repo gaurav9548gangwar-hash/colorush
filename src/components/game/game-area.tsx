@@ -8,8 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CountdownTimer } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
 import { useFirebase } from '@/firebase'
-import type { Bet, BetColor, BetSize, GameResult } from '@/lib/types'
-import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment, query, where, getDocs } from 'firebase/firestore'
+import type { Bet, BetColor, BetSize, GameResult, User } from '@/lib/types'
+import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment, query, where, getDocs, getDoc } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
 import { PastResultsTab } from './past-results-tab'
 import { MyBetsTab } from './my-bets-tab'
@@ -54,10 +54,27 @@ export function GameArea() {
   }, [handleNewRound])
 
   const handleRoundEnd = useCallback(async () => {
-    if (!firestore || !currentRoundId) return;
+    if (!firestore || !currentRoundId || !user) return;
 
     setIsBettingLocked(true);
     setIsProcessing(true);
+
+    // Get current user's balance to apply dynamic winning logic
+    let userBalance = 0;
+    try {
+        const userDocRef = doc(firestore, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+            userBalance = (userDoc.data() as User).balance;
+        }
+    } catch(e) {
+        console.error("Could not fetch user balance for round logic: ", e);
+    }
+    
+    // Determine winning chance based on balance
+    const WINNING_CHANCE_HIGH = 0.5; // 50% for users with balance < 400
+    const WINNING_CHANCE_LOW = 0.3; // 30% for users with balance >= 400
+    const userWinningChance = userBalance < 400 ? WINNING_CHANCE_HIGH : WINNING_CHANCE_LOW;
 
     const betsQuery = query(
         collection(firestore, 'bets'), 
@@ -86,7 +103,6 @@ export function GameArea() {
     }
     
 
-    const FAIR_PLAY_CHANCE = 0.3; 
     const potentialPayouts: { [num: number]: number } = {};
     const winnersByNumber: { [num: number]: Set<string> } = {};
 
@@ -118,35 +134,42 @@ export function GameArea() {
 
     let winningNumber: number;
 
-    if (Math.random() < FAIR_PLAY_CHANCE) {
-        let maxWinners = -1;
-        let bestNumbersForFairPlay: number[] = [];
-        
+    // New logic: Check if current user has placed a bet
+    const userHasBet = betsToProcess.some(bet => bet.userId === user.uid);
+
+    if (userHasBet && Math.random() < userWinningChance) {
+        // User is lucky, try to make them win
+        const userBets = betsToProcess.filter(bet => bet.userId === user.uid);
+        const possibleWinningNumbersForUser: number[] = [];
         for (let i = 0; i <= 9; i++) {
-            const numWinners = winnersByNumber[i].size;
-            if (numWinners > maxWinners) {
-                maxWinners = numWinners;
-                bestNumbersForFairPlay = [i];
-            } else if (numWinners === maxWinners) {
-                bestNumbersForFairPlay.push(i);
+            const isWin = userBets.some(bet => 
+                (bet.type === 'number' && bet.target === i) ||
+                (bet.type === 'color' && bet.target === getWinningColor(i)) ||
+                (bet.type === 'size' && bet.target === getWinningSize(i))
+            );
+            if (isWin) {
+                possibleWinningNumbersForUser.push(i);
             }
         }
-        
-        if (bestNumbersForFairPlay.length > 1) {
+
+        if (possibleWinningNumbersForUser.length > 0) {
+            // Pick the number that results in the lowest payout for the house among the user's winning options
             let minPayout = Infinity;
-            let finalBestNumber = bestNumbersForFairPlay[0];
-            for (const num of bestNumbersForFairPlay) {
+            let bestNumber = -1;
+            possibleWinningNumbersForUser.forEach(num => {
                 if (potentialPayouts[num] < minPayout) {
                     minPayout = potentialPayouts[num];
-                    finalBestNumber = num;
+                    bestNumber = num;
                 }
-            }
-            winningNumber = finalBestNumber;
+            });
+            winningNumber = bestNumber;
         } else {
-             winningNumber = bestNumbersForFairPlay.length > 0 ? bestNumbersForFairPlay[0] : Math.floor(Math.random() * 10)
+            // This case should not happen if userHasBet is true, but as a fallback...
+            winningNumber = Math.floor(Math.random() * 10);
         }
 
     } else {
+        // House is lucky, or user didn't bet. Minimize payout.
         let minPayout = Infinity;
         let bestNumbers: number[] = [];
 
@@ -184,7 +207,7 @@ export function GameArea() {
             endedAt: serverTimestamp()
         });
   
-        const userPayouts: { [userId: string]: number } = {};
+        const userPayouts: { [userId: string]: { balance: number, winningsBalance: number } } = {};
 
         for (const bet of betsToProcess) {
             const betDocRef = doc(firestore, 'bets', bet.id);
@@ -208,14 +231,22 @@ export function GameArea() {
             });
     
             if (hasWon) {
-                userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
+                if (!userPayouts[bet.userId]) {
+                    userPayouts[bet.userId] = { balance: 0, winningsBalance: 0 };
+                }
+                userPayouts[bet.userId].balance += payout;
+                userPayouts[bet.userId].winningsBalance += payout;
             }
         }
 
         for (const userId in userPayouts) {
-            if (userPayouts[userId] > 0) {
+            const payout = userPayouts[userId];
+            if (payout.balance > 0) {
                 const userRef = doc(firestore, "users", userId);
-                batch.update(userRef, { balance: increment(userPayouts[userId]) });
+                batch.update(userRef, { 
+                    balance: increment(payout.balance),
+                    winningsBalance: increment(payout.winningsBalance) 
+                });
             }
         }
         
@@ -236,7 +267,7 @@ export function GameArea() {
     } finally {
         setIsProcessing(false);
     }
-  }, [firestore, currentRoundId, toast]);
+  }, [firestore, currentRoundId, toast, user]);
 
   const renderResult = () => {
     if (!gameResult) {
@@ -334,5 +365,3 @@ export function GameArea() {
     </Card>
   )
 }
-
-    

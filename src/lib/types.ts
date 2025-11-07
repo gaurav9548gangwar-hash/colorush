@@ -7,6 +7,7 @@ export type User = {
   phone: string;
   emailId: string;
   balance: number;
+  winningsBalance: number; // Amount that is withdrawable
   createdAt: string;
   password?: string; // Stored encoded, for admin verification only.
 };

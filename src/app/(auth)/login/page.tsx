@@ -59,6 +59,7 @@ export default function LoginPage() {
         phone: phone,
         emailId: emailId,
         balance: 0,
+        winningsBalance: 0, // Initialize winnings balance
         createdAt: new Date().toISOString(),
         password: password // Storing the raw password
       };

@@ -59,9 +59,23 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
         return;
     }
     
-    const requestData = { balance: newBalance };
+    // For manual edits, we can decide how to affect winningsBalance.
+    // Let's assume manual additions are 'promotional' and not winnings,
+    // and deductions should first come from winnings.
+    let updateData: { balance: any, winningsBalance?: any };
 
-    setDoc(userRef, requestData, { merge: true }).then(() => {
+    if (operation === 'add') {
+        updateData = { balance: newBalance }; // Only adds to total balance
+    } else { // deduct
+        const currentWinnings = user.winningsBalance || 0;
+        const deductionFromWinnings = Math.min(currentWinnings, amount);
+        updateData = {
+            balance: newBalance,
+            winningsBalance: increment(-deductionFromWinnings)
+        };
+    }
+    
+    setDoc(userRef, updateData, { merge: true }).then(() => {
         toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
         onUpdate(); 
         setOpen(false);
@@ -70,7 +84,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
         const contextualError = new FirestorePermissionError({
             path: userRef.path,
             operation: 'update',
-            requestResourceData: { balance: `increment(${operation === 'add' ? amount : -amount})` },
+            requestResourceData: updateData,
         });
         errorEmitter.emit('permission-error', contextualError);
         toast({ variant: "destructive", title: "Error", description: "Failed to update balance. Check permissions." });
@@ -88,6 +102,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
         </DialogHeader>
         <div className="space-y-4">
           <p>Current Balance: <strong>INR {(Number(user.balance) || 0).toFixed(2)}</strong></p>
+          <p>Winnings Balance: <strong>INR {(Number(user.winningsBalance) || 0).toFixed(2)}</strong></p>
           <Label htmlFor="amount">Amount</Label>
           <Input
             id="amount"
@@ -169,6 +184,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                 <TableHead>User</TableHead>
                                 <TableHead>Password</TableHead>
                                 <TableHead>Balance</TableHead>
+                                <TableHead>Winnings</TableHead>
                                 <TableHead>Join Date</TableHead>
                                 <TableHead className='text-right'>Actions</TableHead>
                             </TableRow>
@@ -182,6 +198,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">{u.password || 'N/A'}</TableCell>
                                     <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
+                                    <TableCell>INR {(Number(u.winningsBalance) || 0).toFixed(2)}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                                     <TableCell className="text-right space-x-2">
                                         <BalanceDialog user={u} onUpdate={onUpdate} />
@@ -206,7 +223,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                 </TableRow>
                             )) : (
-                                <TableRow><TableCell colSpan={5} className="text-center">No users found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={6} className="text-center">No users found.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
@@ -240,7 +257,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 
         try {
             if (newStatus === 'approved') {
-                // Step 1: Use setDoc with merge to safely update or create the user's balance.
+                // Step 1: Use setDoc with merge to safely update user's balance. This only adds to the main balance.
                 await setDoc(userRef, { balance: increment(request.amount) }, { merge: true });
                 
                 // Step 2: If balance update is successful, update the request status.
@@ -254,8 +271,6 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
         } catch (err: any) {
             console.error("Error processing request:", err);
 
-            // Since `setDoc` with merge shouldn't cause permission errors if rules are open,
-            // this is a fallback for other unexpected errors.
             const contextualError = new FirestorePermissionError({
                 path: err.message.includes('user') ? userRef.path : requestRef.path,
                 operation: 'update',
@@ -336,26 +351,26 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
 
-        const userRef = doc(firestore, 'users', request.userId);
         const requestRef = doc(firestore, 'withdrawals', request.id);
-        
+        const userRef = doc(firestore, 'users', request.userId);
+
         try {
             if (newStatus === 'approved') {
-                const userDoc = await getDoc(userRef);
-                const currentBalance = userDoc.exists() ? userDoc.data().balance : 0;
-                
-                if (currentBalance < request.amount) {
-                    toast({ variant: 'destructive', title: 'Insufficient Balance', description: 'User does not have enough funds for this withdrawal.' });
-                    await setDoc(requestRef, { status: 'rejected', reason: 'Insufficient balance' }, { merge: true });
-                } else {
-                    await setDoc(userRef, { balance: increment(-request.amount) }, { merge: true });
-                    await setDoc(requestRef, { status: 'approved' }, { merge: true });
-                }
-            } else { 
-                await setDoc(requestRef, { status: 'rejected' }, { merge: true });
-            }
+                // On approval, we only need to update the request status.
+                // The amount was already deducted when the user made the request.
+                await setDoc(requestRef, { status: 'approved' }, { merge: true });
+                toast({ title: 'Success', description: `Request has been approved.` });
 
-            toast({ title: 'Success', description: `Request has been processed.` });
+            } else { // 'rejected'
+                // If rejected, we must refund the amount to the user's balance AND winningsBalance.
+                await setDoc(userRef, { 
+                    balance: increment(request.amount),
+                    winningsBalance: increment(request.amount)
+                }, { merge: true });
+
+                await setDoc(requestRef, { status: 'rejected' }, { merge: true });
+                toast({ title: 'Success', description: `Request has been rejected and amount refunded.` });
+            }
         } catch (err: any) {
              const isUserUpdateError = err.message.toLowerCase().includes('users');
              const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
@@ -485,5 +500,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    

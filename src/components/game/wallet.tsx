@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useMemo } from 'react'
@@ -24,6 +25,7 @@ export function Wallet() {
   const { data: userData, isLoading } = useDoc<User>(userDocRef)
 
   const balance = userData?.balance ?? 0
+  const winningsBalance = userData?.winningsBalance ?? 0
 
   return (
     <Card>
@@ -32,12 +34,24 @@ export function Wallet() {
         <WalletIcon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">
-          {isLoading ? 'Loading...' : `INR ${balance.toFixed(2)}`}
+        <div className="grid grid-cols-2 gap-4">
+            <div>
+                <p className="text-xs text-muted-foreground">
+                    Total Balance
+                </p>
+                <div className="text-2xl font-bold">
+                    {isLoading ? '...' : `INR ${balance.toFixed(2)}`}
+                </div>
+            </div>
+             <div>
+                <p className="text-xs text-muted-foreground">
+                    Withdrawable Balance
+                </p>
+                <div className="text-2xl font-bold">
+                    {isLoading ? '...' : `INR ${winningsBalance.toFixed(2)}`}
+                </div>
+            </div>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Your available balance
-        </p>
         <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
           <Button size="sm" variant="outline" className="flex-1" onClick={() => router.push('/recharge')}>
              <Upload className="mr-2 h-4 w-4" /> Recharge

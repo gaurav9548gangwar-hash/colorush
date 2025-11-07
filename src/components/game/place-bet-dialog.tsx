@@ -91,7 +91,9 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       }
       
       const batch = writeBatch(firestore);
-
+      
+      // When placing a bet, we just deduct from the main balance.
+      // Winnings balance is only for withdrawal tracking.
       batch.update(userRef, {
         balance: increment(-amount)
       });
@@ -174,5 +176,3 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
     </Dialog>
   )
 }
-
-    

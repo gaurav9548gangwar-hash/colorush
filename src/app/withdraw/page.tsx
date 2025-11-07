@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFirebase } from '@/firebase'
-import { addDoc, collection, doc, serverTimestamp } from 'firebase/firestore'
+import { addDoc, collection, doc, serverTimestamp, updateDoc, increment } from 'firebase/firestore'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -56,11 +56,11 @@ export default function WithdrawPage() {
         return
     }
 
-    if (amount > userData.balance) {
+    if (amount > userData.winningsBalance) {
          toast({
             variant: 'destructive',
-            title: 'Insufficient Balance',
-            description: `You cannot withdraw more than your available balance of INR ${userData.balance.toFixed(2)}.`
+            title: 'Insufficient Winnings Balance',
+            description: `You can only withdraw from your winnings. Your withdrawable balance is INR ${userData.winningsBalance.toFixed(2)}.`
         })
         return
     }
@@ -85,30 +85,39 @@ export default function WithdrawPage() {
         createdAt: serverTimestamp(),
     };
 
-    addDoc(collection(firestore, 'withdrawals'), withdrawalData)
-        .then(() => {
-            toast({
-                title: 'Request Submitted',
-                description: 'Your withdrawal request has been sent. It will be processed by our team shortly.'
-            });
-            router.push('/dashboard');
-        })
-        .catch((error) => {
-            const contextualError = new FirestorePermissionError({
-                path: 'withdrawals',
-                operation: 'create',
-                requestResourceData: withdrawalData,
-            });
-            errorEmitter.emit('permission-error', contextualError);
-            toast({
-                variant: 'destructive',
-                title: 'Submission Failed',
-                description: "Check console for details."
-            });
-        })
-        .finally(() => {
-            setIsSubmitting(false);
+    const userRef = doc(firestore, 'users', user.uid);
+
+    try {
+        // First, create the withdrawal request
+        await addDoc(collection(firestore, 'withdrawals'), withdrawalData);
+
+        // Then, deduct the amount from both balances
+        await updateDoc(userRef, {
+            balance: increment(-Number(amount)),
+            winningsBalance: increment(-Number(amount)),
         });
+
+        toast({
+            title: 'Request Submitted',
+            description: 'Your withdrawal request has been sent. It will be processed by our team shortly.'
+        });
+        router.push('/dashboard');
+
+    } catch (error) {
+        const contextualError = new FirestorePermissionError({
+            path: 'withdrawals or users/' + user.uid,
+            operation: 'write',
+            requestResourceData: withdrawalData,
+        });
+        errorEmitter.emit('permission-error', contextualError);
+        toast({
+            variant: 'destructive',
+            title: 'Submission Failed',
+            description: "Could not submit your request. Check console for details."
+        });
+    } finally {
+        setIsSubmitting(false);
+    }
   }
 
    if (isUserLoading || isUserDocLoading) {
@@ -127,14 +136,15 @@ export default function WithdrawPage() {
                 <ArrowLeft />
             </Button>
           <CardTitle className="text-center pt-8">Withdraw Funds</CardTitle>
-          <CardDescription className="text-center">Request a withdrawal to your UPI ID.</CardDescription>
+          <CardDescription className="text-center">Request a withdrawal from your winnings.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-            <Alert variant={userData && userData.balance < MIN_WITHDRAWAL ? 'destructive' : 'default'}>
+            <Alert variant={userData && userData.winningsBalance < MIN_WITHDRAWAL ? 'destructive' : 'default'}>
                 <AlertTitle className="font-bold">Withdrawal Rules</AlertTitle>
                 <AlertDescription>
                     <p>Minimum withdrawal amount is <strong>INR {MIN_WITHDRAWAL}</strong>.</p>
-                    <p>Your current balance is <strong>INR {(userData?.balance || 0).toFixed(2)}</strong>.</p>
+                    <p>Your current withdrawable balance is <strong>INR {(userData?.winningsBalance || 0).toFixed(2)}</strong>.</p>
+                     <p className='text-xs mt-1'>You can only withdraw amount won from bets.</p>
                 </AlertDescription>
             </Alert>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -161,13 +171,13 @@ export default function WithdrawPage() {
                         required
                     />
                 </div>
-                 <Button type="submit" className="w-full" disabled={isSubmitting || (userData?.balance || 0) < MIN_WITHDRAWAL}>
+                 <Button type="submit" className="w-full" disabled={isSubmitting || (userData?.winningsBalance || 0) < MIN_WITHDRAWAL}>
                     {isSubmitting ? 'Submitting Request...' : 'Submit Request'}
                 </Button>
             </form>
         </CardContent>
         <CardFooter>
-            <p className="text-xs text-muted-foreground text-center w-full">Your request will be processed within 24 hours. The amount will be deducted from your wallet after approval.</p>
+            <p className="text-xs text-muted-foreground text-center w-full">Your request will be processed within 24 hours. The amount will be deducted from your wallet immediately.</p>
         </CardFooter>
       </Card>
     </div>

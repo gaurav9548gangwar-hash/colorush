@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState } from 'react'
@@ -81,9 +80,10 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       }
       
       const userData = userDoc.data() as User;
+      const totalBalance = userData.balance + userData.winningsBalance;
 
-      if (userData.balance < amount) {
-        toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your balance is too low. You need at least INR ${amount}.` });
+      if (totalBalance < amount) {
+        toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your total balance is too low. You need at least INR ${amount}.` });
         setIsSubmitting(false);
         setOpen(false);
         return;
@@ -102,10 +102,15 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       
       // Step 1: Create the bet document first
       await addDoc(betsCollectionRef, betData);
-      
+
       // Step 2: If bet creation is successful, then deduct the balance.
+      // Prioritize deducting from main balance, then winnings balance.
+      const mainBalanceDeduction = Math.min(userData.balance, amount);
+      const winningsBalanceDeduction = amount - mainBalanceDeduction;
+
       await updateDoc(userRef, {
-          balance: increment(-amount)
+          balance: increment(-mainBalanceDeduction),
+          winningsBalance: increment(-winningsBalanceDeduction),
       });
 
 

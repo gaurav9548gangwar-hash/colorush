@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -268,7 +267,7 @@ export function GameArea() {
             endedAt: serverTimestamp()
         });
   
-        const userPayouts: { [userId: string]: number } = {};
+        const userPayouts: { [userId: string]: { balance: number, winnings: number } } = {};
         const userWinLoss: { [userId: string]: 'win' | 'loss' } = {};
 
         for (const bet of betsToProcess) {
@@ -294,9 +293,10 @@ export function GameArea() {
     
             if (hasWon) {
                 if (!userPayouts[bet.userId]) {
-                    userPayouts[bet.userId] = 0;
+                    userPayouts[bet.userId] = { balance: 0, winnings: 0 };
                 }
-                userPayouts[bet.userId] += payout;
+                userPayouts[bet.userId].balance += payout;
+                userPayouts[bet.userId].winnings += payout;
                 userWinLoss[bet.userId] = 'win';
             } else if(userWinLoss[bet.userId] !== 'win') {
                  userWinLoss[bet.userId] = 'loss';
@@ -305,15 +305,16 @@ export function GameArea() {
 
         for (const userId in userPayouts) {
             const payout = userPayouts[userId];
-            if (payout > 0) {
+            if (payout.balance > 0) {
                 const userRef = doc(firestore, "users", userId);
                 batch.update(userRef, { 
-                    balance: increment(payout),
+                    balance: increment(payout.balance),
+                    winningsBalance: increment(payout.winnings),
                 });
                 
                 const userDocForBalance = await getDoc(userRef);
                 const currentBalance = (userDocForBalance.data() as User)?.balance || 0;
-                const newBalance = currentBalance + payout;
+                const newBalance = currentBalance + payout.balance;
                 checkAndSetThresholdFlag(firestore, userId, newBalance);
             }
         }

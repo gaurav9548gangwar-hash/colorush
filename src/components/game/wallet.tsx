@@ -1,8 +1,7 @@
-
 'use client'
 
 import { useMemo } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useFirebase } from '@/firebase'
 import { useDoc } from '@/firebase/firestore/use-doc'
@@ -25,6 +24,7 @@ export function Wallet() {
   const { data: userData, isLoading } = useDoc<User>(userDocRef)
 
   const balance = userData?.balance ?? 0
+  const winningsBalance = userData?.winningsBalance ?? 0
 
   return (
     <Card>
@@ -33,12 +33,22 @@ export function Wallet() {
         <WalletIcon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div>
-            <p className="text-xs text-muted-foreground">
-                Total Balance
-            </p>
-            <div className="text-2xl font-bold">
-                {isLoading ? '...' : `INR ${balance.toFixed(2)}`}
+        <div className="grid grid-cols-2 gap-4">
+            <div>
+                <p className="text-xs text-muted-foreground">
+                    Total Balance
+                </p>
+                <div className="text-2xl font-bold">
+                    {isLoading ? '...' : `INR ${(balance + winningsBalance).toFixed(2)}`}
+                </div>
+            </div>
+             <div>
+                <p className="text-xs text-muted-foreground">
+                    Withdrawable Balance
+                </p>
+                <div className="text-2xl font-bold">
+                    {isLoading ? '...' : `INR ${winningsBalance.toFixed(2)}`}
+                </div>
             </div>
         </div>
         <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">

@@ -73,6 +73,18 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
     
     const userRef = doc(firestore, 'users', user.uid);
     const betsCollectionRef = collection(firestore, 'bets');
+    const newBetRef = doc(betsCollectionRef); 
+    const betData: Bet = {
+      id: newBetRef.id,
+      userId: user.uid,
+      roundId,
+      amount,
+      target,
+      type,
+      status: 'pending',
+      payout: 0,
+      createdAt: serverTimestamp(),
+    }
 
     try {
       const userDoc = await getDoc(userRef);
@@ -109,18 +121,6 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
 
       batch.update(userRef, balanceUpdate);
       
-      const newBetRef = doc(betsCollectionRef); 
-      const betData: Bet = {
-        id: newBetRef.id,
-        userId: user.uid,
-        roundId,
-        amount,
-        target,
-        type,
-        status: 'pending',
-        payout: 0,
-        createdAt: serverTimestamp(),
-      }
       batch.set(newBetRef, betData);
 
       await batch.commit();
@@ -132,7 +132,7 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
         const contextualError = new FirestorePermissionError({
             path: error.message.includes("User data not found") ? userRef.path : 'bets',
             operation: error.message.includes("User data not found") ? 'get' : 'create',
-            requestResourceData: { betAmount: amount },
+            requestResourceData: betData,
         });
         errorEmitter.emit('permission-error', contextualError);
         

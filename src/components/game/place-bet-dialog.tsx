@@ -18,7 +18,7 @@ import { useFirebase } from '@/firebase'
 import { useToast } from '@/hooks/use-toast'
 import type { Bet, BetColor, BetSize, BetTarget, User } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { doc, getDoc, increment, writeBatch, collection, serverTimestamp, addDoc } from 'firebase/firestore'
+import { doc, getDoc, increment, writeBatch, collection, serverTimestamp, addDoc, updateDoc } from 'firebase/firestore'
 import { FirestorePermissionError } from '@/firebase/errors'
 import { errorEmitter } from '@/firebase/error-emitter'
 
@@ -73,18 +73,6 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
     
     const userRef = doc(firestore, 'users', user.uid);
     const betsCollectionRef = collection(firestore, 'bets');
-    const newBetRef = doc(betsCollectionRef); 
-    const betData: Bet = {
-      id: newBetRef.id,
-      userId: user.uid,
-      roundId,
-      amount,
-      target,
-      type,
-      status: 'pending',
-      payout: 0,
-      createdAt: serverTimestamp(),
-    }
 
     try {
       const userDoc = await getDoc(userRef);
@@ -93,53 +81,63 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       }
       
       const userData = userDoc.data() as User;
-      const currentBalance = userData.balance || 0;
-      const currentWinningsBalance = userData.winningsBalance || 0;
+      const totalBalance = (userData.balance || 0) + (userData.winningsBalance || 0);
 
-      if ((currentBalance + currentWinningsBalance) < amount) {
+      if (totalBalance < amount) {
         toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your total balance is too low. You need at least INR ${amount}.` });
         setIsSubmitting(false);
         setOpen(false);
         return;
       }
       
-      const batch = writeBatch(firestore);
+      // Step 1: Create the bet document first
+      const betData: Omit<Bet, 'id'> = {
+        userId: user.uid,
+        roundId,
+        amount,
+        target,
+        type,
+        status: 'pending',
+        payout: 0,
+        createdAt: serverTimestamp(),
+      }
+      const betDocRef = await addDoc(betsCollectionRef, betData);
       
-      // New logic: Deduct from main balance first, then from winnings if necessary.
+      // Step 2: If bet creation is successful, then deduct the balance.
+      const currentBalance = userData.balance || 0;
+      const currentWinningsBalance = userData.winningsBalance || 0;
       const deductionFromMain = Math.min(currentBalance, amount);
       const remainingAmount = amount - deductionFromMain;
-      const deductionFromWinnings = Math.min(currentWinnings, remainingAmount);
+      const deductionFromWinnings = Math.min(currentWinningsBalance, remainingAmount);
 
       let balanceUpdate = {};
       if (deductionFromMain > 0 && deductionFromWinnings > 0) {
           balanceUpdate = { balance: increment(-deductionFromMain), winningsBalance: increment(-deductionFromWinnings) };
       } else if (deductionFromMain > 0) {
           balanceUpdate = { balance: increment(-deductionFromMain) };
-      } else if (deductionFromWinnings > 0) {
+      } else if (deductionFromWinnings > 0) { // This condition implies deduction is from winnings only
           balanceUpdate = { winningsBalance: increment(-deductionFromWinnings) };
       }
 
-      batch.update(userRef, balanceUpdate);
-      
-      batch.set(newBetRef, betData);
+      await updateDoc(userRef, balanceUpdate);
 
-      await batch.commit();
 
       toast({ title: 'Bet Placed!', description: `You bet INR ${amount} on ${target}. Good luck!` })
       setOpen(false)
 
     } catch (error: any) {
+        // Since we are not using batch, the error can be from getDoc, addDoc, or updateDoc
         const contextualError = new FirestorePermissionError({
             path: error.message.includes("User data not found") ? userRef.path : 'bets',
-            operation: error.message.includes("User data not found") ? 'get' : 'create',
-            requestResourceData: betData,
+            operation: 'write', // Generic 'write' as it could be create or update
+            requestResourceData: { amount: amount, target: target, type: type },
         });
         errorEmitter.emit('permission-error', contextualError);
         
         toast({ 
           variant: 'destructive', 
           title: 'Error Placing Bet', 
-          description: error.message === "User data not found." ? error.message : 'Could not place your bet. Please check permissions.'
+          description: error.message || 'Could not place your bet. Please check permissions.'
         })
     } finally {
       setIsSubmitting(false)

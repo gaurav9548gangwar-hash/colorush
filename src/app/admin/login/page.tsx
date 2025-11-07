@@ -29,20 +29,13 @@ export default function AdminLoginPage() {
         return;
     }
 
-    // If already an admin, go to admin dashboard
-    const checkAdminStatus = async () => {
-        if(firestore && user){
-            const userRef = doc(firestore, 'users', user.uid);
-            const userDoc = await getDoc(userRef);
-            if(userDoc.exists() && userDoc.data().isAdmin){
-                sessionStorage.setItem('isAdminLoggedIn', 'true');
-                router.replace('/admin');
-            }
-        }
+    // If already an admin (session is set), go to admin dashboard
+    if (sessionStorage.getItem('isAdminLoggedIn') === 'true') {
+        router.replace('/admin');
+        return;
     }
-    checkAdminStatus();
     
-  }, [user, isUserLoading, router, firestore, toast]);
+  }, [user, isUserLoading, router, toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,13 +46,22 @@ export default function AdminLoginPage() {
         if (user && firestore) {
           try {
             const userRef = doc(firestore, 'users', user.uid);
-            await updateDoc(userRef, { isAdmin: true });
-            toast({ title: 'Admin Status Granted!', description: 'Your account now has admin privileges. Redirecting...' });
+            // Check if user is already an admin in firestore
+            const userDoc = await getDoc(userRef);
+            if (!userDoc.exists() || !userDoc.data()?.isAdmin) {
+                // If not an admin, grant admin rights
+                await updateDoc(userRef, { isAdmin: true });
+                toast({ title: 'Admin Status Granted!', description: 'Your account now has admin privileges. Redirecting...' });
+            } else {
+                 toast({ title: 'Admin Access Confirmed', description: 'Redirecting to admin panel...' });
+            }
+
             sessionStorage.setItem('isAdminLoggedIn', 'true');
             router.push('/admin');
+
           } catch (error) {
             console.error("Error granting admin status: ", error);
-            toast({ variant: 'destructive', title: 'Admin Grant Failed', description: 'Could not set admin status in Firestore.' });
+            toast({ variant: 'destructive', title: 'Admin Grant Failed', description: 'Could not set admin status in Firestore. Check console.' });
             setIsSubmitting(false);
           }
         } else {

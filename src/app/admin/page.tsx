@@ -18,7 +18,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
-import type { User, DepositRequest, WithdrawalRequest } from '@/lib/types'
+import type { User, DepositRequest, WithdrawalRequest, Notification } from '@/lib/types'
 import { useCollection } from '@/firebase/firestore/use-collection'
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -119,12 +119,12 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
 
-    const usersRef = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore, keyForRefresh]);
-    const { data: users, isLoading: isLoadingUsers, error: usersError, manualRefresh } = useCollection<User>(usersRef);
+    const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+    const { data: users, isLoading: isLoadingUsers, error: usersError, manualRefresh } = useCollection<User>(usersQuery);
     
     useEffect(() => {
-        manualRefresh();
-    }, [keyForRefresh, manualRefresh]);
+        if(usersQuery) manualRefresh();
+    }, [keyForRefresh, manualRefresh, usersQuery]);
 
 
     const filteredUsers = useMemo(() => users?.filter(u => 
@@ -231,16 +231,16 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
     const { toast } = useToast();
     const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
-    const depositsRef = useMemoFirebase(() => {
+    const depositsQuery = useMemoFirebase(() => {
       if (!firestore) return null;
       return query(collection(firestore, 'deposits'), where('status', '==', 'pending'));
-    }, [firestore, keyForRefresh]);
+    }, [firestore]);
 
-    const { data: deposits, isLoading, error, manualRefresh } = useCollection<DepositRequest>(depositsRef);
+    const { data: deposits, isLoading, error, manualRefresh } = useCollection<DepositRequest>(depositsQuery);
 
     useEffect(() => {
-        manualRefresh();
-    }, [keyForRefresh, manualRefresh]);
+        if(depositsQuery) manualRefresh();
+    }, [keyForRefresh, manualRefresh, depositsQuery]);
 
 
     const handleRequest = async (request: DepositRequest, newStatus: 'approved' | 'rejected') => {
@@ -379,16 +379,16 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
     const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
 
-    const withdrawalsRef = useMemoFirebase(() => {
+    const withdrawalsQuery = useMemoFirebase(() => {
       if (!firestore) return null;
       return query(collection(firestore, 'withdrawals'), where('status', '==', 'pending'));
-    },[firestore, keyForRefresh]);
+    },[firestore]);
     
-    const { data: withdrawals, isLoading, error, manualRefresh } = useCollection<WithdrawalRequest>(withdrawalsRef);
+    const { data: withdrawals, isLoading, error, manualRefresh } = useCollection<WithdrawalRequest>(withdrawalsQuery);
     
     useEffect(() => {
-        manualRefresh();
-    }, [keyForRefresh, manualRefresh]);
+        if(withdrawalsQuery) manualRefresh();
+    }, [keyForRefresh, manualRefresh, withdrawalsQuery]);
 
 
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
@@ -511,10 +511,12 @@ function NotificationsTab() {
             });
             errorEmitter.emit('permission-error', contextualError);
             toast({ variant: 'destructive', title: 'Failed to Send', description: 'Could not send notification. Check permissions.' });
-        }).then(() => {
-            toast({ title: 'Success!', description: 'Notification has been sent to all users.' });
-            setTitle('');
-            setMessage('');
+        }).then((docRef) => {
+            if (docRef) {
+              toast({ title: 'Success!', description: 'Notification has been sent to all users.' });
+              setTitle('');
+              setMessage('');
+            }
         }).finally(() => {
             setIsSending(false);
         });
@@ -601,12 +603,12 @@ export default function AdminPage() {
         </Button>
       </header>
       
-      <Tabs defaultValue="users" className="w-full" onValueChange={forceRefresh}>
+      <Tabs defaultValue="users" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="users">User Management</TabsTrigger>
-          <TabsTrigger value="deposits">Deposit Requests</TabsTrigger>
-          <TabsTrigger value="withdrawals">Withdrawal Requests</TabsTrigger>
-          <TabsTrigger value="notifications">Send Notifications</TabsTrigger>
+          <TabsTrigger value="users" onClick={forceRefresh}>User Management</TabsTrigger>
+          <TabsTrigger value="deposits" onClick={forceRefresh}>Deposit Requests</TabsTrigger>
+          <TabsTrigger value="withdrawals" onClick={forceRefresh}>Withdrawal Requests</TabsTrigger>
+          <TabsTrigger value="notifications" onClick={forceRefresh}>Send Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4">

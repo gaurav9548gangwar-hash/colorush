@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore'
 import { useFirebase } from '@/firebase'
 import type { Bet } from '@/lib/types'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -18,31 +18,40 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
+    // This function will be called when the component mounts
     const fetchBets = async () => {
+      // Ensure we have what we need before proceeding
       if (!firestore || !userId) {
         setIsLoading(false);
         return;
       }
+      
       setIsLoading(true);
       setError(null);
       
       try {
-        // Simplified query: Only filter by userId. Sorting will be done on the client.
+        // 1. Create a simple query to get bets only for the current user.
+        // NO 'orderBy' here to avoid needing a composite index in Firestore.
         const betsQuery = query(
           collection(firestore, 'bets'),
           where('userId', '==', userId)
         );
+        
+        // 2. Fetch the documents from Firestore.
         const querySnapshot = await getDocs(betsQuery);
         const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
         
-        // Sort the bets by date on the client side
+        // 3. Sort the bets on the client-side (in the browser) by date.
+        // This is reliable and avoids Firestore errors.
         const sortedBets = userBets.sort((a, b) => {
+           // Handle both Firestore Timestamps and regular Date objects
            const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
            const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-           return dateB - dateA;
+           return dateB - dateA; // Sort from newest to oldest
         });
 
         setBets(sortedBets);
+
       } catch (err: any) {
         console.error("Error fetching bets: ", err);
         setError(err);
@@ -52,6 +61,8 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
     };
     
     fetchBets();
+    
+  // This useEffect will run only when firestore or userId changes.
   }, [firestore, userId]);
 
   const renderTarget = (bet: Bet) => {

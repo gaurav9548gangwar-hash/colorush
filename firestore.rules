@@ -30,14 +30,16 @@ service cloud.firestore {
     match /deposits/{depositId} {
       // Any authenticated user can create, read, update, or list deposit requests.
       allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
-      allow read, update, list: if allowAllAuthenticated();
+      allow read, list: if allowAllAuthenticated();
+      allow update: if allowAllAuthenticated(); // Admin can update
       allow delete: if false; // Maintain history
     }
 
      match /withdrawals/{withdrawalId} {
       // Any authenticated user can create, read, update, or list withdrawal requests.
       allow create: if isOwner(request.resource.data.userId); // User can only create for themselves
-      allow read, update, list: if allowAllAuthenticated();
+      allow read, list: if allowAllAuthenticated();
+      allow update: if allowAllAuthenticated(); // Admin can update
       allow delete: if false; // Maintain history
      }
     

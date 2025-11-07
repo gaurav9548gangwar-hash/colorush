@@ -277,11 +277,29 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
         try {
             if (newStatus === 'approved') {
                  const userDoc = await getDoc(userRef);
-                 const currentBalance = (userDoc.data() as User)?.balance || 0;
+                 if (!userDoc.exists()) {
+                    throw new Error("User document not found.");
+                 }
+                 const userData = userDoc.data() as User;
+                 const currentBalance = userData.balance || 0;
                  const newBalance = currentBalance + request.amount;
 
-                // Step 1: Use setDoc with merge to safely update user's balance.
-                await setDoc(userRef, { balance: increment(request.amount) }, { merge: true });
+                 let userUpdateData: any = { balance: increment(request.amount) };
+                 
+                 // If user is in losing phase, a new deposit resets them to winning phase.
+                 if (!userData.inWinningPhase) {
+                    userUpdateData.inWinningPhase = true;
+                    userUpdateData.initialDeposit = request.amount;
+                    userUpdateData.targetBalance = newBalance * 2;
+                    userUpdateData.betsSinceLastWin = 0;
+                 } else if (userData.initialDeposit === 0) {
+                    // This is the first deposit for a new user
+                    userUpdateData.initialDeposit = request.amount;
+                    userUpdateData.targetBalance = newBalance * 2;
+                 }
+
+                // Step 1: Use setDoc with merge to safely update user's data.
+                await setDoc(userRef, userUpdateData, { merge: true });
                 
                 // Step 2: If balance update is successful, update the request status.
                 await setDoc(requestRef, { status: newStatus }, { merge: true });
@@ -305,7 +323,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
             errorEmitter.emit('permission-error', contextualError);
             toast({ variant: 'destructive', title: 'Processing Failed', description: 'An unexpected error occurred.' });
         } finally {
-            onUpdate(); // Refresh data regardless of outcome
+            onUpdate();
             setIsProcessing(null);
         }
     }

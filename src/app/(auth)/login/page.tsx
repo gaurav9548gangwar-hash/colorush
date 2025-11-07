@@ -59,9 +59,14 @@ export default function LoginPage() {
         phone: phone,
         emailId: emailId,
         balance: 0,
-        hasReached400: false, // Initialize threshold flag
+        hasReached400: false,
         createdAt: new Date().toISOString(),
-        password: password // Storing the raw password
+        password: password, // Storing the raw password
+        // Initialize new fields for winning/losing logic
+        initialDeposit: 0,
+        targetBalance: 0,
+        inWinningPhase: true, // Start in winning phase
+        betsSinceLastWin: 0,
       };
       
       const userDocRef = doc(firestore, "users", newUser.uid);

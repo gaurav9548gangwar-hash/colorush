@@ -93,18 +93,11 @@ export function GameArea() {
         console.error("Could not fetch user data for round logic: ", e);
     }
     
-    // Determine winning chance based on balance and history
-    const WINNING_CHANCE_HIGH = 0.8; // 80% for users with balance < 400 and flag is false
-    const WINNING_CHANCE_LOW = 0.3; // 30% for regular users
-    
-    let userWinningChance = WINNING_CHANCE_LOW; // Default
-    if (currentUserData) {
-        if (!currentUserData.hasReached400 && currentUserData.balance < 400) {
-            userWinningChance = WINNING_CHANCE_HIGH;
-        } else if (currentUserData.hasReached400) {
-            userWinningChance = 0; // User will be forced to lose
-        }
-    }
+    // --- START: New Dynamic Winning/Losing Logic ---
+
+    // Winning chances
+    const WINNING_CHANCE_HIGH = 0.8; // 80% when in winning phase
+    const WINNING_CHANCE_LOW = 0.3;  // 30% default (not used in new logic)
 
     const betsQuery = query(
         collection(firestore, 'bets'), 
@@ -139,87 +132,103 @@ export function GameArea() {
     }
     
     betsToProcess.forEach(bet => {
-        if (bet.type === 'number' && typeof bet.target === 'number') {
-            potentialPayouts[bet.target] += bet.amount * 9;
-        }
         for (let i = 0; i <= 9; i++) {
             const winningColor = getWinningColor(i);
             const winningSize = getWinningSize(i);
             let payoutMultiplier = 2;
-
-            if (bet.type === 'color' && bet.target === winningColor) {
-                potentialPayouts[i] += bet.amount * payoutMultiplier;
-            }
-            if (bet.type === 'size' && bet.target === winningSize) {
-                potentialPayouts[i] += bet.amount * 2;
+            if(bet.type === 'number' && bet.target === i) payoutMultiplier = 9;
+            if(bet.type === 'color' && bet.target === 'white' && (i === 0 || i === 5)) payoutMultiplier = 2; // Simplified, can be adjusted
+            
+            if ((bet.type === 'number' && bet.target === i) ||
+                (bet.type === 'color' && bet.target === winningColor) ||
+                (bet.type === 'size' && bet.target === winningSize))
+            {
+                 potentialPayouts[i] += bet.amount * payoutMultiplier;
             }
         }
     });
 
     let winningNumber: number;
     const userHasBet = betsToProcess.some(bet => bet.userId === user.uid);
+    const randomLossStreak = Math.floor(Math.random() * 5) + 5; // 5 to 10
 
-    if (currentUserData?.hasReached400 && userHasBet) {
-        // Force a loss for the user
-        const userBets = betsToProcess.filter(bet => bet.userId === user.uid);
-        const losingNumbersForUser: number[] = [];
-        for (let i = 0; i <= 9; i++) {
-            const isWin = userBets.some(bet => 
-                (bet.type === 'number' && bet.target === i) ||
-                (bet.type === 'color' && bet.target === getWinningColor(i)) ||
-                (bet.type === 'size' && bet.target === getWinningSize(i))
-            );
-            if (!isWin) {
-                losingNumbersForUser.push(i);
-            }
-        }
-
-        if (losingNumbersForUser.length > 0) {
-            winningNumber = losingNumbersForUser[Math.floor(Math.random() * losingNumbersForUser.length)];
-        } else {
-            // User bet on everything, must win something, pick lowest payout
-            let minPayout = Infinity;
-            let bestNumber = -1;
-            for (let i = 0; i <= 9; i++) {
-                if (potentialPayouts[i] < minPayout) {
-                    minPayout = potentialPayouts[i];
-                    bestNumber = i;
+    // Main logic branch
+    if (currentUserData && userHasBet) {
+        if (currentUserData.inWinningPhase && currentUserData.balance < currentUserData.targetBalance) {
+            // WINNING PHASE: 80% chance to win
+            if (Math.random() < WINNING_CHANCE_HIGH) {
+                // Find a number that makes the user win with the minimum possible payout
+                const winningNumbersForUser: number[] = [];
+                 for (let i = 0; i <= 9; i++) {
+                    const isWin = betsToProcess.filter(b => b.userId === user.uid).some(bet =>
+                        (bet.type === 'number' && bet.target === i) ||
+                        (bet.type === 'color' && bet.target === getWinningColor(i)) ||
+                        (bet.type === 'size' && bet.target === getWinningSize(i))
+                    );
+                    if(isWin) winningNumbersForUser.push(i);
+                }
+                 if(winningNumbersForUser.length > 0){
+                    winningNumber = winningNumbersForUser[Math.floor(Math.random() * winningNumbersForUser.length)];
+                 } else { // Should not happen if user has bet
+                    winningNumber = Math.floor(Math.random() * 10);
+                 }
+            } else {
+                 // 20% chance to lose even in winning phase
+                const losingNumbersForUser: number[] = [];
+                for (let i = 0; i <= 9; i++) {
+                     const isWin = betsToProcess.filter(b => b.userId === user.uid).some(bet =>
+                        (bet.type === 'number' && bet.target === i) ||
+                        (bet.type === 'color' && bet.target === getWinningColor(i)) ||
+                        (bet.type === 'size' && bet.target === getWinningSize(i))
+                    );
+                    if(!isWin) losingNumbersForUser.push(i);
+                }
+                if(losingNumbersForUser.length > 0) {
+                    winningNumber = losingNumbersForUser[Math.floor(Math.random() * losingNumbersForUser.length)];
+                } else { // User bet on everything, force loss on highest payout
+                     winningNumber = Object.keys(potentialPayouts).reduce((a, b) => potentialPayouts[Number(a)] > potentialPayouts[Number(b)] ? Number(a) : Number(b), 0);
                 }
             }
-            winningNumber = bestNumber;
-        }
-
-    } else if (userHasBet && Math.random() < userWinningChance) {
-        // User is lucky, try to make them win
-        const userBets = betsToProcess.filter(bet => bet.userId === user.uid);
-        const possibleWinningNumbersForUser: number[] = [];
-        for (let i = 0; i <= 9; i++) {
-            const isWin = userBets.some(bet => 
-                (bet.type === 'number' && bet.target === i) ||
-                (bet.type === 'color' && bet.target === getWinningColor(i)) ||
-                (bet.type === 'size' && bet.target === getWinningSize(i))
-            );
-            if (isWin) {
-                possibleWinningNumbersForUser.push(i);
+        } else {
+            // LOSING PHASE
+            // Check if it's time for an intermittent win
+            if (currentUserData.betsSinceLastWin >= randomLossStreak) {
+                // Give a win, then reset counter
+                const winningNumbersForUser: number[] = [];
+                 for (let i = 0; i <= 9; i++) {
+                    const isWin = betsToProcess.filter(b => b.userId === user.uid).some(bet =>
+                        (bet.type === 'number' && bet.target === i) ||
+                        (bet.type === 'color' && bet.target === getWinningColor(i)) ||
+                        (bet.type === 'size' && bet.target === getWinningSize(i))
+                    );
+                    if(isWin) winningNumbersForUser.push(i);
+                }
+                if(winningNumbersForUser.length > 0){
+                    winningNumber = winningNumbersForUser[Math.floor(Math.random() * winningNumbersForUser.length)];
+                } else {
+                    winningNumber = Math.floor(Math.random() * 10);
+                }
+                // Reset counter in batch write
+            } else {
+                // Force a loss
+                const losingNumbersForUser: number[] = [];
+                for (let i = 0; i <= 9; i++) {
+                     const isWin = betsToProcess.filter(b => b.userId === user.uid).some(bet =>
+                        (bet.type === 'number' && bet.target === i) ||
+                        (bet.type === 'color' && bet.target === getWinningColor(i)) ||
+                        (bet.type === 'size' && bet.target === getWinningSize(i))
+                    );
+                    if(!isWin) losingNumbersForUser.push(i);
+                }
+                 if(losingNumbersForUser.length > 0) {
+                    winningNumber = losingNumbersForUser[Math.floor(Math.random() * losingNumbersForUser.length)];
+                 } else {
+                    winningNumber = Math.floor(Math.random() * 10);
+                 }
             }
         }
-
-        if (possibleWinningNumbersForUser.length > 0) {
-            let minPayout = Infinity;
-            let bestNumber = -1;
-            possibleWinningNumbersForUser.forEach(num => {
-                if (potentialPayouts[num] < minPayout) {
-                    minPayout = potentialPayouts[num];
-                    bestNumber = num;
-                }
-            });
-            winningNumber = bestNumber;
-        } else {
-            winningNumber = Math.floor(Math.random() * 10);
-        }
-
     } else {
-        // House is lucky, or user didn't bet. Minimize payout for everyone.
+        // Default behavior if no user data or user hasn't bet: minimize house payout
         let minPayout = Infinity;
         let bestNumbers: number[] = [];
 
@@ -233,6 +242,8 @@ export function GameArea() {
         }
         winningNumber = bestNumbers.length > 0 ? bestNumbers[Math.floor(Math.random() * bestNumbers.length)] : Math.floor(Math.random() * 10);
     }
+    
+    // --- END: New Dynamic Winning/Losing Logic ---
 
 
     const winningColor = getWinningColor(winningNumber);
@@ -258,6 +269,7 @@ export function GameArea() {
         });
   
         const userPayouts: { [userId: string]: number } = {};
+        const userWinLoss: { [userId: string]: 'win' | 'loss' } = {};
 
         for (const bet of betsToProcess) {
             const betDocRef = doc(firestore, 'bets', bet.id);
@@ -285,6 +297,9 @@ export function GameArea() {
                     userPayouts[bet.userId] = 0;
                 }
                 userPayouts[bet.userId] += payout;
+                userWinLoss[bet.userId] = 'win';
+            } else if(userWinLoss[bet.userId] !== 'win') {
+                 userWinLoss[bet.userId] = 'loss';
             }
         }
 
@@ -295,13 +310,32 @@ export function GameArea() {
                 batch.update(userRef, { 
                     balance: increment(payout),
                 });
-                // Check for threshold crossing after win
-                const userDoc = await getDoc(userRef);
-                if (userDoc.exists()) {
-                    const currentBalance = userDoc.data().balance;
-                    checkAndSetThresholdFlag(firestore, userId, currentBalance + payout);
+                
+                const userDocForBalance = await getDoc(userRef);
+                const currentBalance = (userDocForBalance.data() as User)?.balance || 0;
+                const newBalance = currentBalance + payout;
+                checkAndSetThresholdFlag(firestore, userId, newBalance);
+            }
+        }
+        
+        // Update user phase and counters
+        if(currentUserData && user.uid in userWinLoss) {
+            const userRef = doc(firestore, "users", user.uid);
+            let userDataUpdate: any = {};
+
+            if(currentUserData.inWinningPhase && currentUserData.balance >= currentUserData.targetBalance) {
+                userDataUpdate.inWinningPhase = false;
+                userDataUpdate.betsSinceLastWin = 0;
+            } else if (!currentUserData.inWinningPhase) {
+                if (userWinLoss[user.uid] === 'win') {
+                    userDataUpdate.betsSinceLastWin = 0;
+                } else {
+                    userDataUpdate.betsSinceLastWin = increment(1);
                 }
             }
+             if(Object.keys(userDataUpdate).length > 0){
+                batch.update(userRef, userDataUpdate);
+             }
         }
         
         await batch.commit();

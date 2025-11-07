@@ -9,10 +9,9 @@ import { Badge } from '@/components/ui/badge'
 
 interface MyBetsTabProps {
   userId: string;
-  key?: string; // Allow key to be passed to force re-renders if needed from parent
 }
 
-export function MyBetsTab({ userId, ...props }: MyBetsTabProps) {
+export function MyBetsTab({ userId }: MyBetsTabProps) {
   const { firestore } = useFirebase()
   const [bets, setBets] = useState<Bet[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -45,7 +44,7 @@ export function MyBetsTab({ userId, ...props }: MyBetsTabProps) {
 
   useEffect(() => {
     fetchBets();
-  }, [fetchBets, props.key]);
+  }, [fetchBets]);
 
   const renderTarget = (bet: Bet) => {
     const baseClasses = "px-2 py-1 rounded-md text-xs font-bold text-white"

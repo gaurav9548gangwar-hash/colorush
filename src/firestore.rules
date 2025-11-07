@@ -22,7 +22,7 @@ service cloud.firestore {
       // An admin can read any user's data. A user can only read their own.
       allow read: if isOwner(userId) || isAdmin();
 
-      // A user can only update their own profile. Admin can update any.
+      // An admin can update any user's data (like balance). A user can update their own data too.
       allow update: if isOwner(userId) || isAdmin();
       
       // Only an admin can delete a user document.
@@ -76,8 +76,9 @@ service cloud.firestore {
       // Users can LIST their own bets. Admin can list all bets.
       allow list: if isAdmin() || (request.auth != null && request.query.where[0][2] == request.auth.uid);
       
-      // Bet documents are updated by the round-end process.
+      // Bet documents are updated by the round-end process (admin).
       allow update: if isAdmin();
+
       // Users cannot delete bets.
       allow delete: if false;
     }
@@ -85,8 +86,9 @@ service cloud.firestore {
     match /game_rounds/{gameId} {
       // Game rounds are public information.
       allow read: if true;
+
       // In a production app, writes should be locked down to a trusted server environment.
-      // For this app, we allow any authenticated user to create game results for simplicity.
+      // For this app, we allow any authenticated admin user to create game results for simplicity.
       allow write: if isAdmin();
     }
   }

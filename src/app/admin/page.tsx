@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
@@ -7,6 +8,7 @@ import {
   doc,
   query,
   updateDoc,
+  setDoc,
   getDoc,
   where,
   increment,
@@ -59,7 +61,7 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
     
     const requestData = { balance: newBalance };
 
-    updateDoc(userRef, requestData).then(() => {
+    setDoc(userRef, requestData, { merge: true }).then(() => {
         toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
         onUpdate(); 
         setOpen(false);
@@ -238,23 +240,24 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 
         try {
             if (newStatus === 'approved') {
-                // Step 1: Update user balance.
-                await updateDoc(userRef, { balance: increment(request.amount) });
+                // Step 1: Use setDoc with merge to safely update or create the user's balance.
+                await setDoc(userRef, { balance: increment(request.amount) }, { merge: true });
+                
                 // Step 2: If balance update is successful, update the request status.
-                await updateDoc(requestRef, { status: newStatus });
+                await setDoc(requestRef, { status: newStatus }, { merge: true });
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
             } else { // newStatus is 'rejected'
                 // For rejections, we only need to update the request status.
-                await updateDoc(requestRef, { status: newStatus });
+                await setDoc(requestRef, { status: newStatus }, { merge: true });
                 toast({ title: 'Success', description: `Request has been ${newStatus}.` });
             }
         } catch (err: any) {
             console.error("Error processing request:", err);
-            // Since rules are open, this error is likely not a permission error, but we'll log it just in case.
-            const isUserUpdateError = err.message.toLowerCase().includes('user');
-            const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
+
+            // Since `setDoc` with merge shouldn't cause permission errors if rules are open,
+            // this is a fallback for other unexpected errors.
             const contextualError = new FirestorePermissionError({
-                path: errorPath,
+                path: err.message.includes('user') ? userRef.path : requestRef.path,
                 operation: 'update',
                 requestResourceData: { status: newStatus },
             });
@@ -343,13 +346,13 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                 
                 if (currentBalance < request.amount) {
                     toast({ variant: 'destructive', title: 'Insufficient Balance', description: 'User does not have enough funds for this withdrawal.' });
-                    await updateDoc(requestRef, { status: 'rejected', reason: 'Insufficient balance' });
+                    await setDoc(requestRef, { status: 'rejected', reason: 'Insufficient balance' }, { merge: true });
                 } else {
-                    await updateDoc(userRef, { balance: increment(-request.amount) });
-                    await updateDoc(requestRef, { status: 'approved' });
+                    await setDoc(userRef, { balance: increment(-request.amount) }, { merge: true });
+                    await setDoc(requestRef, { status: 'approved' }, { merge: true });
                 }
             } else { 
-                await updateDoc(requestRef, { status: 'rejected' });
+                await setDoc(requestRef, { status: 'rejected' }, { merge: true });
             }
 
             toast({ title: 'Success', description: `Request has been processed.` });
@@ -482,3 +485,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    

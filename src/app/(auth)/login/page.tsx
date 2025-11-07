@@ -59,7 +59,6 @@ export default function LoginPage() {
         phone: phone,
         emailId: emailId,
         balance: 0,
-        winningsBalance: 0, // Initialize winnings balance
         hasReached400: false, // Initialize threshold flag
         createdAt: new Date().toISOString(),
         password: password // Storing the raw password

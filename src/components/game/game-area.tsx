@@ -257,8 +257,7 @@ export function GameArea() {
             endedAt: serverTimestamp()
         });
   
-        const userPayouts: { [userId: string]: { balance: number, winningsBalance: number } } = {};
-        const userDocs: { [userId: string]: User } = {}; // Cache user docs
+        const userPayouts: { [userId: string]: number } = {};
 
         for (const bet of betsToProcess) {
             const betDocRef = doc(firestore, 'bets', bet.id);
@@ -283,26 +282,24 @@ export function GameArea() {
     
             if (hasWon) {
                 if (!userPayouts[bet.userId]) {
-                    userPayouts[bet.userId] = { balance: 0, winningsBalance: 0 };
+                    userPayouts[bet.userId] = 0;
                 }
-                userPayouts[bet.userId].balance += payout;
-                userPayouts[bet.userId].winningsBalance += payout;
+                userPayouts[bet.userId] += payout;
             }
         }
 
         for (const userId in userPayouts) {
             const payout = userPayouts[userId];
-            if (payout.balance > 0) {
+            if (payout > 0) {
                 const userRef = doc(firestore, "users", userId);
                 batch.update(userRef, { 
-                    balance: increment(payout.balance),
-                    winningsBalance: increment(payout.winningsBalance) 
+                    balance: increment(payout),
                 });
                 // Check for threshold crossing after win
                 const userDoc = await getDoc(userRef);
                 if (userDoc.exists()) {
                     const currentBalance = userDoc.data().balance;
-                    checkAndSetThresholdFlag(firestore, userId, currentBalance + payout.balance);
+                    checkAndSetThresholdFlag(firestore, userId, currentBalance + payout);
                 }
             }
         }

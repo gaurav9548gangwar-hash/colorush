@@ -81,16 +81,14 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
       }
       
       const userData = userDoc.data() as User;
-      const totalBalance = (userData.balance || 0) + (userData.winningsBalance || 0);
 
-      if (totalBalance < amount) {
-        toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your total balance is too low. You need at least INR ${amount}.` });
+      if (userData.balance < amount) {
+        toast({ variant: 'destructive', title: 'Insufficient Balance', description: `Your balance is too low. You need at least INR ${amount}.` });
         setIsSubmitting(false);
         setOpen(false);
         return;
       }
       
-      // Step 1: Create the bet document first
       const betData: Omit<Bet, 'id'> = {
         userId: user.uid,
         roundId,
@@ -101,25 +99,14 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
         payout: 0,
         createdAt: serverTimestamp(),
       }
-      const betDocRef = await addDoc(betsCollectionRef, betData);
+      
+      // Step 1: Create the bet document first
+      await addDoc(betsCollectionRef, betData);
       
       // Step 2: If bet creation is successful, then deduct the balance.
-      const currentBalance = userData.balance || 0;
-      const currentWinningsBalance = userData.winningsBalance || 0;
-      const deductionFromMain = Math.min(currentBalance, amount);
-      const remainingAmount = amount - deductionFromMain;
-      const deductionFromWinnings = Math.min(currentWinningsBalance, remainingAmount);
-
-      let balanceUpdate = {};
-      if (deductionFromMain > 0 && deductionFromWinnings > 0) {
-          balanceUpdate = { balance: increment(-deductionFromMain), winningsBalance: increment(-deductionFromWinnings) };
-      } else if (deductionFromMain > 0) {
-          balanceUpdate = { balance: increment(-deductionFromMain) };
-      } else if (deductionFromWinnings > 0) { // This condition implies deduction is from winnings only
-          balanceUpdate = { winningsBalance: increment(-deductionFromWinnings) };
-      }
-
-      await updateDoc(userRef, balanceUpdate);
+      await updateDoc(userRef, {
+          balance: increment(-amount)
+      });
 
 
       toast({ title: 'Bet Placed!', description: `You bet INR ${amount} on ${target}. Good luck!` })
@@ -127,10 +114,11 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
 
     } catch (error: any) {
         // Since we are not using batch, the error can be from getDoc, addDoc, or updateDoc
+        const betData = { userId: user.uid, roundId, amount, target, type, status: 'pending', payout: 0 };
         const contextualError = new FirestorePermissionError({
             path: error.message.includes("User data not found") ? userRef.path : 'bets',
             operation: 'write', // Generic 'write' as it could be create or update
-            requestResourceData: { amount: amount, target: target, type: type },
+            requestResourceData: betData,
         });
         errorEmitter.emit('permission-error', contextualError);
         

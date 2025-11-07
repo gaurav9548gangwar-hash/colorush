@@ -89,22 +89,8 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
     const newBalance = operation === 'add' ? currentBalance + amount : currentBalance - amount;
     const newBalanceIncrement = operation === 'add' ? increment(amount) : increment(-amount);
     
-    // For manual edits, we can decide how to affect winningsBalance.
-    // Let's assume manual additions are 'promotional' and not winnings,
-    // and deductions should first come from winnings.
-    let updateData: { balance: any, winningsBalance?: any };
+    let updateData = { balance: newBalanceIncrement };
 
-    if (operation === 'add') {
-        updateData = { balance: newBalanceIncrement }; // Only adds to total balance
-    } else { // deduct
-        const currentWinnings = user.winningsBalance || 0;
-        const deductionFromWinnings = Math.min(currentWinnings, amount);
-        updateData = {
-            balance: newBalanceIncrement,
-            winningsBalance: increment(-deductionFromWinnings)
-        };
-    }
-    
     setDoc(userRef, updateData, { merge: true }).then(() => {
         toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
         if (operation === 'add') {
@@ -135,7 +121,6 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
         </DialogHeader>
         <div className="space-y-4">
           <p>Current Balance: <strong>INR {(Number(user.balance) || 0).toFixed(2)}</strong></p>
-          <p>Winnings Balance: <strong>INR {(Number(user.winningsBalance) || 0).toFixed(2)}</strong></p>
           <p>Has Reached 400: <strong>{user.hasReached400 ? 'Yes' : 'No'}</strong></p>
           <Label htmlFor="amount">Amount</Label>
           <Input
@@ -218,7 +203,6 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                 <TableHead>User</TableHead>
                                 <TableHead>Password</TableHead>
                                 <TableHead>Balance</TableHead>
-                                <TableHead>Winnings</TableHead>
                                 <TableHead>Crossed 400</TableHead>
                                 <TableHead>Join Date</TableHead>
                                 <TableHead className='text-right'>Actions</TableHead>
@@ -233,7 +217,6 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">{u.password || 'N/A'}</TableCell>
                                     <TableCell>INR {(Number(u.balance) || 0).toFixed(2)}</TableCell>
-                                    <TableCell>INR {(Number(u.winningsBalance) || 0).toFixed(2)}</TableCell>
                                     <TableCell>{u.hasReached400 ? 'Yes' : 'No'}</TableCell>
                                     <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
                                     <TableCell className="text-right space-x-2">
@@ -259,7 +242,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                                     </TableCell>
                                 </TableRow>
                             )) : (
-                                <TableRow><TableCell colSpan={7} className="text-center">No users found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={6} className="text-center">No users found.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
@@ -297,7 +280,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                  const currentBalance = (userDoc.data() as User)?.balance || 0;
                  const newBalance = currentBalance + request.amount;
 
-                // Step 1: Use setDoc with merge to safely update user's balance. This only adds to the main balance.
+                // Step 1: Use setDoc with merge to safely update user's balance.
                 await setDoc(userRef, { balance: increment(request.amount) }, { merge: true });
                 
                 // Step 2: If balance update is successful, update the request status.
@@ -405,10 +388,9 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                 toast({ title: 'Success', description: `Request has been approved.` });
 
             } else { // 'rejected'
-                // If rejected, we must refund the amount to the user's balance AND winningsBalance.
+                // If rejected, we must refund the amount to the user's balance.
                 await setDoc(userRef, { 
                     balance: increment(request.amount),
-                    winningsBalance: increment(request.amount)
                 }, { merge: true });
 
                 await setDoc(requestRef, { status: 'rejected' }, { merge: true });

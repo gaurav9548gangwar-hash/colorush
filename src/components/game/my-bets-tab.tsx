@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore'
 import { useFirebase } from '@/firebase'
 import type { Bet } from '@/lib/types'
@@ -8,43 +8,44 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 
 interface MyBetsTabProps {
-  userId: string
+  userId: string;
+  key?: string; // Allow key to be passed to force re-renders if needed from parent
 }
 
-export function MyBetsTab({ userId }: MyBetsTabProps) {
+export function MyBetsTab({ userId, ...props }: MyBetsTabProps) {
   const { firestore } = useFirebase()
   const [bets, setBets] = useState<Bet[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const fetchBets = useCallback(async () => {
-    if (!firestore || !userId) {
-      setIsLoading(false)
-      return
-    }
-    setIsLoading(true)
-    setError(null)
-    
-    try {
-      const betsQuery = query(
-        collection(firestore, 'bets'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(betsQuery)
-      const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet))
-      setBets(userBets)
-    } catch (err: any) {
-      console.error("Error fetching bets: ", err)
-      setError(err)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [firestore, userId]);
-
   useEffect(() => {
-    fetchBets()
-  }, [fetchBets])
+    const fetchBets = async () => {
+        if (!firestore || !userId) {
+            setIsLoading(false);
+            return;
+        }
+        setIsLoading(true);
+        setError(null);
+        
+        try {
+            const betsQuery = query(
+                collection(firestore, 'bets'),
+                where('userId', '==', userId),
+                orderBy('createdAt', 'desc')
+            );
+            const querySnapshot = await getDocs(betsQuery);
+            const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
+            setBets(userBets);
+        } catch (err: any) {
+            console.error("Error fetching bets: ", err);
+            setError(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    fetchBets();
+  }, [firestore, userId, props.key]); // Rerun if firestore, userId, or the key changes.
 
   const renderTarget = (bet: Bet) => {
     const baseClasses = "px-2 py-1 rounded-md text-xs font-bold text-white"

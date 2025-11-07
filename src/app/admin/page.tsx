@@ -236,59 +236,33 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
         const requestRef = doc(firestore, 'deposits', request.id);
         const userRef = doc(firestore, 'users', request.userId);
 
-        if (newStatus === 'approved') {
-            try {
-                // Step 1: Update user balance first.
+        try {
+            if (newStatus === 'approved') {
+                // Step 1: Update user balance.
                 await updateDoc(userRef, { balance: increment(request.amount) });
-
                 // Step 2: If balance update is successful, update the request status.
                 await updateDoc(requestRef, { status: newStatus });
-                
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
-            } catch (err: any) {
-                const isUserUpdateError = err.message.toLowerCase().includes('user');
-
-                const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
-                const operation: 'update' = 'update';
-                const requestData = isUserUpdateError 
-                    ? { balance: `increment(${request.amount})` } 
-                    : { status: newStatus };
-
-                const contextualError = new FirestorePermissionError({
-                    path: errorPath,
-                    operation: operation,
-                    requestResourceData: requestData,
-                });
-                errorEmitter.emit('permission-error', contextualError);
-                toast({ variant: 'destructive', title: 'Error Processing Approval', description: `Failed to update ${isUserUpdateError ? 'user balance' : 'request status'}. Check permissions.` });
-                
-                // If the balance was updated but the request status failed, we should try to revert the balance.
-                // This is complex and for this app, we will log it. In a real app, a cloud function would be better.
-                if(!isUserUpdateError) {
-                    console.error("CRITICAL: User balance was updated, but deposit status was not. Manual correction needed for user:", request.userId);
-                }
-
-            } finally {
-                onUpdate(); // This will trigger a refresh in the parent component
-                setIsProcessing(null);
-            }
-        } else { // newStatus is 'rejected'
-             try {
+            } else { // newStatus is 'rejected'
                 // For rejections, we only need to update the request status.
                 await updateDoc(requestRef, { status: newStatus });
                 toast({ title: 'Success', description: `Request has been ${newStatus}.` });
-            } catch (err: any) {
-                 const contextualError = new FirestorePermissionError({
-                    path: requestRef.path,
-                    operation: 'update',
-                    requestResourceData: { status: newStatus },
-                });
-                errorEmitter.emit('permission-error', contextualError);
-                toast({ variant: 'destructive', title: 'Error', description: 'Could not reject request. Check permissions.' });
-            } finally {
-                onUpdate();
-                setIsProcessing(null);
             }
+        } catch (err: any) {
+            console.error("Error processing request:", err);
+            // Since rules are open, this error is likely not a permission error, but we'll log it just in case.
+            const isUserUpdateError = err.message.toLowerCase().includes('user');
+            const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
+            const contextualError = new FirestorePermissionError({
+                path: errorPath,
+                operation: 'update',
+                requestResourceData: { status: newStatus },
+            });
+            errorEmitter.emit('permission-error', contextualError);
+            toast({ variant: 'destructive', title: 'Processing Failed', description: 'An unexpected error occurred.' });
+        } finally {
+            onUpdate(); // Refresh data regardless of outcome
+            setIsProcessing(null);
         }
     }
 
@@ -371,8 +345,6 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                     toast({ variant: 'destructive', title: 'Insufficient Balance', description: 'User does not have enough funds for this withdrawal.' });
                     await updateDoc(requestRef, { status: 'rejected', reason: 'Insufficient balance' });
                 } else {
-                    // This is a batch write which can cause issues with security rules.
-                    // For withdrawals, let's also do it sequentially.
                     await updateDoc(userRef, { balance: increment(-request.amount) });
                     await updateDoc(requestRef, { status: 'approved' });
                 }
@@ -381,7 +353,6 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
             }
 
             toast({ title: 'Success', description: `Request has been processed.` });
-            onUpdate();
         } catch (err: any) {
              const isUserUpdateError = err.message.toLowerCase().includes('users');
              const errorPath = isUserUpdateError ? userRef.path : requestRef.path;
@@ -392,6 +363,8 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
              });
              errorEmitter.emit('permission-error', contextualError);
              toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check permissions.' });
+        } finally {
+            onUpdate();
         }
     }
 

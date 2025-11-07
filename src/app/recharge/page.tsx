@@ -170,7 +170,7 @@ export default function RechargePage() {
                    <div className="space-y-2">
                       <Label htmlFor="transactionId">UPI Transaction ID / Ref. No.</Label>
                       <Input 
-                          id="transactionId" _
+                          id="transactionId" 
                           type="text"
                           value={transactionId}
                           onChange={(e) => setTransactionId(e.target.value)}

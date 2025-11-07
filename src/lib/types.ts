@@ -62,3 +62,10 @@ export interface WithdrawalRequest {
     status: 'pending' | 'approved' | 'rejected';
     createdAt: Timestamp;
 }
+
+export interface Notification {
+    id: string;
+    title: string;
+    message: string;
+    createdAt: Timestamp;
+}

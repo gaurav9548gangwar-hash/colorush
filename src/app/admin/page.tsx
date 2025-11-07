@@ -14,6 +14,8 @@ import {
   type Timestamp,
   deleteDoc,
   type Firestore,
+  addDoc,
+  serverTimestamp,
 } from 'firebase/firestore'
 import { useFirebase, useMemoFirebase } from '@/firebase'
 import type { User, DepositRequest, WithdrawalRequest } from '@/lib/types'
@@ -25,12 +27,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { LogOut, RefreshCw, CheckCircle, XCircle, Trash2 } from 'lucide-react'
+import { LogOut, RefreshCw, CheckCircle, XCircle, Trash2, Send } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { Textarea } from '@/components/ui/textarea'
 
 
 // #####################################################################
@@ -445,6 +448,87 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
 }
 
 // #####################################################################
+//                     NOTIFICATIONS TAB
+// #####################################################################
+function NotificationsTab() {
+    const { firestore } = useFirebase();
+    const { toast } = useToast();
+    const [title, setTitle] = useState('');
+    const [message, setMessage] = useState('');
+    const [isSending, setIsSending] = useState(false);
+
+    const handleSendNotification = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!firestore) return;
+        if (!title.trim() || !message.trim()) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Title and message cannot be empty.' });
+            return;
+        }
+
+        setIsSending(true);
+
+        const notificationData = {
+            title,
+            message,
+            createdAt: serverTimestamp(),
+        };
+
+        try {
+            await addDoc(collection(firestore, 'notifications'), notificationData);
+            toast({ title: 'Success!', description: 'Notification has been sent to all users.' });
+            setTitle('');
+            setMessage('');
+        } catch (error) {
+            const contextualError = new FirestorePermissionError({
+                path: 'notifications',
+                operation: 'create',
+                requestResourceData: notificationData,
+            });
+            errorEmitter.emit('permission-error', contextualError);
+            toast({ variant: 'destructive', title: 'Failed to Send', description: 'Could not send notification. Check permissions.' });
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Send Notification</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleSendNotification} className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="notification-title">Title</Label>
+                        <Input
+                            id="notification-title"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            placeholder="e.g. Special Bonus!"
+                            required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="notification-message">Message</Label>
+                        <Textarea
+                            id="notification-message"
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            placeholder="Write your announcement here..."
+                            required
+                        />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={isSending}>
+                        {isSending ? 'Sending...' : <><Send className="mr-2 h-4 w-4" /> Send to All Users</>}
+                    </Button>
+                </form>
+            </CardContent>
+        </Card>
+    );
+}
+
+
+// #####################################################################
 //                         MAIN ADMIN PAGE
 // #####################################################################
 export default function AdminPage() {
@@ -489,10 +573,11 @@ export default function AdminPage() {
       </header>
       
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="deposits">Deposit Requests</TabsTrigger>
           <TabsTrigger value="withdrawals">Withdrawal Requests</TabsTrigger>
+          <TabsTrigger value="notifications">Send Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4">
@@ -503,6 +588,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="withdrawals" className="mt-4">
             <WithdrawalRequestsTab onUpdate={forceRefresh} keyForRefresh={refreshKey} />
+        </TabsContent>
+        <TabsContent value="notifications" className="mt-4">
+            <NotificationsTab />
         </TabsContent>
       </Tabs>
     </div>

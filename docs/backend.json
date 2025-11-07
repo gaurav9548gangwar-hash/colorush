@@ -34,6 +34,18 @@
         "password": {
           "type": "string",
           "description": "Base64 encoded password, for admin verification only. Not for login."
+        },
+        "initialDeposit": {
+          "type": "number"
+        },
+        "targetBalance": {
+          "type": "number"
+        },
+        "inWinningPhase": {
+          "type": "boolean"
+        },
+        "betsSinceLastWin": {
+          "type": "number"
         }
       },
       "required": ["id", "phone", "emailId", "balance", "createdAt"]
@@ -93,6 +105,24 @@
         }
       },
       "required": ["userId", "userName", "amount", "upiId", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "type": "object",
+      "description": "Represents a notification sent to all users.",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["title", "message", "createdAt"]
     }
   },
   "auth": {
@@ -110,8 +140,10 @@
     "/withdrawals/{withdrawalId}": {
       "schema": { "$ref": "#/entities/WithdrawalRequest" },
       "description": "Stores user withdrawal requests. Admins can manage these."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Stores notifications sent to all users."
     }
   }
 }
-
-    

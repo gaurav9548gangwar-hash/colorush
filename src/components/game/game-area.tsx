@@ -39,7 +39,6 @@ export function GameArea() {
   const [isBettingLocked, setIsBettingLocked] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0);
   
   const handleNewRound = useCallback(() => {
     setIsProcessing(false)
@@ -47,7 +46,6 @@ export function GameArea() {
     setGameResult(null)
     const newRoundId = new Date().getTime().toString();
     setCurrentRoundId(newRoundId)
-    setRefreshKey(prevKey => prevKey + 1); // Trigger refresh for MyBetsTab
   }, [])
   
   useEffect(() => {
@@ -376,7 +374,7 @@ export function GameArea() {
             <PastResultsTab />
           </TabsContent>
           <TabsContent value="myBets">
-            {user ? <MyBetsTab userId={user.uid} key={refreshKey} /> : <p className="text-center py-4">Please log in to see your bets.</p>}
+            {user ? <MyBetsTab userId={user.uid} /> : <p className="text-center py-4">Please log in to see your bets.</p>}
           </TabsContent>
         </Tabs>
       </CardContent>
@@ -394,5 +392,3 @@ export function GameArea() {
     </Card>
   )
 }
-
-    

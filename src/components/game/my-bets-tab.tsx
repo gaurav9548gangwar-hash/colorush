@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore'
+import { useEffect, useState } from 'react'
+import { collection, query, where, getDocs } from 'firebase/firestore'
 import { useFirebase } from '@/firebase'
 import type { Bet } from '@/lib/types'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -17,42 +17,41 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const fetchBets = useCallback(async () => {
-    if (!firestore || !userId) {
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      // Simplified query to avoid needing a composite index
-      const betsQuery = query(
-        collection(firestore, 'bets'),
-        where('userId', '==', userId)
-      );
-      const querySnapshot = await getDocs(betsQuery);
-      const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
-      
-      // Sort the bets by date on the client side
-      const sortedBets = userBets.sort((a, b) => {
-         const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-         const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-         return dateB - dateA;
-      });
-
-      setBets(sortedBets);
-    } catch (err: any) {
-      console.error("Error fetching bets: ", err);
-      setError(err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [firestore, userId]);
-
   useEffect(() => {
+    const fetchBets = async () => {
+      if (!firestore || !userId) {
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const betsQuery = query(
+          collection(firestore, 'bets'),
+          where('userId', '==', userId)
+        );
+        const querySnapshot = await getDocs(betsQuery);
+        const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
+        
+        // Sort the bets by date on the client side
+        const sortedBets = userBets.sort((a, b) => {
+           const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+           const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+           return dateB - dateA;
+        });
+
+        setBets(sortedBets);
+      } catch (err: any) {
+        console.error("Error fetching bets: ", err);
+        setError(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
     fetchBets();
-  }, [fetchBets]);
+  }, [firestore, userId]);
 
   const renderTarget = (bet: Bet) => {
     const baseClasses = "px-2 py-1 rounded-md text-xs font-bold text-white"

@@ -31,7 +31,7 @@ import { LogOut, RefreshCw, CheckCircle, XCircle, Trash2, Send } from 'lucide-re
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { errorEmitter } from '@/firebase/error-emitter'
-import { FirestorePermissionError } from '@/firebase/errors'
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -64,21 +64,20 @@ function BalanceDialog({ user, onUpdate }: { user: User, onUpdate: () => void })
 
     const newBalanceIncrement = operation === 'add' ? increment(amount) : increment(-amount);
     
-    let updateData = { balance: newBalanceIncrement };
+    const updateData = { balance: newBalanceIncrement };
 
-    setDoc(userRef, updateData, { merge: true }).then(() => {
-        toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
-        onUpdate(); 
-        setOpen(false);
-        setAmount(0);
-    }).catch(error => {
+    updateDoc(userRef, updateData).catch(error => {
         const contextualError = new FirestorePermissionError({
             path: userRef.path,
             operation: 'update',
             requestResourceData: updateData,
-        });
+        } satisfies SecurityRuleContext);
         errorEmitter.emit('permission-error', contextualError);
-        toast({ variant: "destructive", title: "Error", description: "Failed to update balance. Check permissions." });
+    }).then(() => {
+        toast({ title: "Success", description: `${user.name}'s balance has been updated.` });
+        onUpdate(); 
+        setOpen(false);
+        setAmount(0);
     }).finally(() => {
         setIsSubmitting(false);
     });
@@ -133,18 +132,16 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
         
         const userDocRef = doc(firestore, 'users', userId);
 
-        try {
-            await deleteDoc(userDocRef);
-            toast({ title: "User Deleted", description: "The user's data has been removed from Firestore." });
-            onUpdate(); // Refresh the user list
-        } catch (error) {
+        deleteDoc(userDocRef).catch(error => {
             const contextualError = new FirestorePermissionError({
                 path: userDocRef.path,
                 operation: 'delete',
-            });
+            } satisfies SecurityRuleContext);
             errorEmitter.emit('permission-error', contextualError);
-            toast({ variant: "destructive", title: "Deletion Failed", description: "Could not delete user. Check permissions." });
-        }
+        }).then(() => {
+            toast({ title: "User Deleted", description: "The user's data has been removed from Firestore." });
+            onUpdate(); // Refresh the user list
+        });
     };
     
     return (
@@ -274,29 +271,39 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                     const referrerRef = doc(firestore, 'users', userData.referredBy);
                     const referrerDoc = await getDoc(referrerRef);
                     if (referrerDoc.exists()) {
-                        await updateDoc(referrerRef, { balance: increment(20) });
-                        toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
+                         updateDoc(referrerRef, { balance: increment(20) }).catch(err => {
+                            const contextualError = new FirestorePermissionError({ path: referrerRef.path, operation: 'update' } satisfies SecurityRuleContext);
+                            errorEmitter.emit('permission-error', contextualError);
+                         }).then(() => {
+                            toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
+                         });
                     }
                 }
 
-                await setDoc(userRef, userUpdateData, { merge: true });
-                await setDoc(requestRef, { status: newStatus }, { merge: true });
+                await updateDoc(userRef, userUpdateData).catch(err => {
+                    const contextualError = new FirestorePermissionError({ path: userRef.path, operation: 'update', requestResourceData: userUpdateData } satisfies SecurityRuleContext);
+                    errorEmitter.emit('permission-error', contextualError);
+                    throw err; // Re-throw to stop the chain
+                });
+                
+                await updateDoc(requestRef, { status: newStatus }).catch(err => {
+                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } } satisfies SecurityRuleContext);
+                    errorEmitter.emit('permission-error', contextualError);
+                    throw err; // Re-throw to stop the chain
+                });
 
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
             } else { // newStatus is 'rejected'
-                await setDoc(requestRef, { status: newStatus }, { merge: true });
+                await updateDoc(requestRef, { status: newStatus }).catch(err => {
+                    const contextualError = new FirestorePermissionError({ path: requestRef.path, operation: 'update', requestResourceData: { status: newStatus } } satisfies SecurityRuleContext);
+                    errorEmitter.emit('permission-error', contextualError);
+                    throw err; // Re-throw to stop the chain
+                });
                 toast({ title: 'Success', description: `Request has been ${newStatus}.` });
             }
         } catch (err: any) {
-            console.error("Error processing request:", err);
-
-            const contextualError = new FirestorePermissionError({
-                path: err.message.includes('user') ? userRef.path : requestRef.path,
-                operation: 'update',
-                requestResourceData: { status: newStatus },
-            });
-            errorEmitter.emit('permission-error', contextualError);
-            toast({ variant: 'destructive', title: 'Processing Failed', description: 'An unexpected error occurred.' });
+            // Errors are already emitted in the .catch blocks
+             toast({ variant: 'destructive', title: 'Processing Failed', description: 'Could not process request. Check permissions.' });
         } finally {
             onUpdate();
             setIsProcessing(null);
@@ -359,6 +366,8 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
 function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number, onUpdate: () => void }) {
     const { firestore } = useFirebase();
     const { toast } = useToast();
+    const [isProcessing, setIsProcessing] = useState<string | null>(null);
+
 
     const withdrawalsRef = useMemoFirebase(() => {
       if (!firestore) return null;
@@ -369,6 +378,7 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
     
     const handleRequest = async (request: WithdrawalRequest, newStatus: 'approved' | 'rejected') => {
         if (!firestore) return;
+        setIsProcessing(request.id);
 
         const requestRef = doc(firestore, 'withdrawals', request.id);
         const userRef = doc(firestore, 'users', request.userId);
@@ -377,16 +387,13 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
             if (newStatus === 'approved') {
                 // On approval, we only need to update the request status.
                 // The amount was already deducted when the user made the request.
-                await setDoc(requestRef, { status: 'approved' }, { merge: true });
+                await updateDoc(requestRef, { status: 'approved' });
                 toast({ title: 'Success', description: `Request has been approved.` });
 
             } else { // 'rejected'
                 // If rejected, we must refund the amount to the user's balance.
-                await setDoc(userRef, { 
-                    balance: increment(request.amount),
-                }, { merge: true });
-
-                await setDoc(requestRef, { status: 'rejected' }, { merge: true });
+                await updateDoc(userRef, { balance: increment(request.amount) });
+                await updateDoc(requestRef, { status: 'rejected' });
                 toast({ title: 'Success', description: `Request has been rejected and amount refunded.` });
             }
         } catch (err: any) {
@@ -396,11 +403,12 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                 path: errorPath,
                 operation: 'update',
                 requestResourceData: { status: newStatus },
-             });
+             } satisfies SecurityRuleContext);
              errorEmitter.emit('permission-error', contextualError);
              toast({ variant: 'destructive', title: 'Error', description: 'Could not update request. Check permissions.' });
         } finally {
             onUpdate();
+             setIsProcessing(null);
         }
     }
 
@@ -439,8 +447,8 @@ function WithdrawalRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: num
                                   <TableCell>{req.upiId}</TableCell>
                                   <TableCell>{formatDate(req.createdAt)}</TableCell>
                                   <TableCell className="text-right space-x-2">
-                                      <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}><CheckCircle className="mr-2"/>Approve</Button>
-                                      <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}><XCircle className="mr-2"/>Reject</Button>
+                                      <Button size="sm" variant="ghost" className="text-green-500" onClick={() => handleRequest(req, 'approved')}  disabled={isProcessing === req.id}><CheckCircle className="mr-2"/>Approve</Button>
+                                      <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleRequest(req, 'rejected')}  disabled={isProcessing === req.id}><XCircle className="mr-2"/>Reject</Button>
                                   </TableCell>
                               </TableRow>
                           )) : (
@@ -480,22 +488,21 @@ function NotificationsTab() {
             createdAt: serverTimestamp(),
         };
 
-        try {
-            await addDoc(collection(firestore, 'notifications'), notificationData);
-            toast({ title: 'Success!', description: 'Notification has been sent to all users.' });
-            setTitle('');
-            setMessage('');
-        } catch (error) {
+        addDoc(collection(firestore, 'notifications'), notificationData).catch(error => {
             const contextualError = new FirestorePermissionError({
                 path: 'notifications',
                 operation: 'create',
                 requestResourceData: notificationData,
-            });
+            } satisfies SecurityRuleContext);
             errorEmitter.emit('permission-error', contextualError);
             toast({ variant: 'destructive', title: 'Failed to Send', description: 'Could not send notification. Check permissions.' });
-        } finally {
+        }).then(() => {
+            toast({ title: 'Success!', description: 'Notification has been sent to all users.' });
+            setTitle('');
+            setMessage('');
+        }).finally(() => {
             setIsSending(false);
-        }
+        });
     };
 
     return (
@@ -603,3 +610,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 
 const TOTAL_DURATION = 60 // 1 minute
-const BETTING_DURATION = 40
+const BETTING_DURATION = 55
 export const LOCKED_DURATION = TOTAL_DURATION - BETTING_DURATION
 
 interface CountdownTimerProps {

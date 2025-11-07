@@ -250,10 +250,12 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                     throw new Error("User document not found.");
                  }
                  const userData = userDoc.data() as User;
-                 const currentBalance = userData.balance || 0;
-                 const newBalance = currentBalance + request.amount;
+                 const newBalance = (userData.balance || 0) + request.amount;
 
-                 let userUpdateData: any = { balance: increment(request.amount) };
+                 let userUpdateData: any = { 
+                    balance: increment(request.amount),
+                    depositCount: increment(1)
+                 };
                  
                  // If user is in losing phase, a new deposit resets them to winning phase.
                  if (!userData.inWinningPhase) {
@@ -267,16 +269,21 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                     userUpdateData.targetBalance = newBalance * 2;
                  }
 
-                // Step 1: Use setDoc with merge to safely update user's data.
-                // Using setDoc with merge instead of updateDoc to prevent "No document to update" error
+                // Award referral bonus on first deposit
+                if (userData.depositCount === 0 && userData.referredBy) {
+                    const referrerRef = doc(firestore, 'users', userData.referredBy);
+                    const referrerDoc = await getDoc(referrerRef);
+                    if (referrerDoc.exists()) {
+                        await updateDoc(referrerRef, { balance: increment(20) });
+                        toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
+                    }
+                }
+
                 await setDoc(userRef, userUpdateData, { merge: true });
-                
-                // Step 2: If balance update is successful, update the request status.
                 await setDoc(requestRef, { status: newStatus }, { merge: true });
 
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
             } else { // newStatus is 'rejected'
-                // For rejections, we only need to update the request status.
                 await setDoc(requestRef, { status: newStatus }, { merge: true });
                 toast({ title: 'Success', description: `Request has been ${newStatus}.` });
             }

@@ -1,30 +1,38 @@
 'use client'
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth"
 import { useFirebase } from "@/firebase"
-import { doc, setDoc } from "firebase/firestore"
+import { doc, setDoc, getDocs, query, where, collection } from "firebase/firestore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FirestorePermissionError } from "@/firebase/errors"
-import { errorEmitter } from "@/firebase/error-emitter"
-import { KeyRound, Phone, User as UserIcon } from "lucide-react"
+import { KeyRound, Phone, User as UserIcon, Gift } from "lucide-react"
 
 export default function LoginPage() {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
+  const [referralCode, setReferralCode] = useState("")
   const [loginPhone, setLoginPhone] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { auth, firestore } = useFirebase() 
   const { toast } = useToast()
+
+  // Effect to read referral code from URL
+  useEffect(() => {
+    const refCode = searchParams.get('ref');
+    if (refCode) {
+      setReferralCode(refCode);
+    }
+  }, [searchParams]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,14 +52,32 @@ export default function LoginPage() {
     const emailId = `${phone}@colorush.in`
 
     try {
-      // Step 1: Create the user in Firebase Auth
+      let referredBy = '';
+      if (referralCode.trim()) {
+        const usersRef = collection(firestore, 'users');
+        const q = query(usersRef, where('referralCode', '==', referralCode.trim()));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const referrerDoc = querySnapshot.docs[0];
+          referredBy = referrerDoc.id;
+        } else {
+           toast({
+              variant: "destructive",
+              title: "Invalid Referral Code",
+              description: "The referral code you entered does not exist.",
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, emailId, password)
       const newUser = userCredential.user;
       
-      // Step 2: Update the user's profile in Firebase Auth (e.g., display name)
       await updateProfile(newUser, { displayName: name });
 
-      // Step 3: Prepare the user data document for Firestore
+      const ownReferralCode = `${name.split(' ')[0].toLowerCase()}${phone.slice(-4)}`;
+      
       const userData = {
         id: newUser.uid,
         name: name,
@@ -59,17 +85,18 @@ export default function LoginPage() {
         emailId: emailId,
         balance: 0,
         createdAt: new Date().toISOString(),
-        password: password, // Storing the raw password
-        // Initialize new fields for winning/losing logic
+        password: password,
         initialDeposit: 0,
         targetBalance: 0,
-        inWinningPhase: true, // Start in winning phase
+        inWinningPhase: true,
         betsSinceLastWin: 0,
+        referralCode: ownReferralCode,
+        referredBy: referredBy || '',
+        depositCount: 0,
       };
       
       const userDocRef = doc(firestore, "users", newUser.uid);
       
-      // Step 4: Save the user document in Firestore. This must be awaited.
       await setDoc(userDocRef, userData);
       
       toast({ title: "Registration Successful", description: "Welcome! You are now logged in." })
@@ -152,6 +179,10 @@ export default function LoginPage() {
                 <div className="relative">
                     <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                     <Input id="password" type="password" placeholder="Create Password (min. 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="pl-10"/>
+                </div>
+                <div className="relative">
+                    <Gift className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="referral" type="text" placeholder="Referral Code (Optional)" value={referralCode} onChange={(e) => setReferralCode(e.target.value)} className="pl-10"/>
                 </div>
                 <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
                     {isSubmitting ? "Creating Account..." : "Create Account"}

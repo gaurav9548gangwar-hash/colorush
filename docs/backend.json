@@ -46,9 +46,21 @@
         },
         "betsSinceLastWin": {
           "type": "number"
+        },
+        "referralCode": {
+          "type": "string",
+          "description": "The user's unique referral code to share with others."
+        },
+        "referredBy": {
+            "type": "string",
+            "description": "The UID of the user who referred this user."
+        },
+        "depositCount": {
+            "type": "number",
+            "description": "The number of deposits made by the user."
         }
       },
-      "required": ["id", "phone", "emailId", "balance", "createdAt"]
+      "required": ["id", "phone", "emailId", "balance", "createdAt", "referralCode", "depositCount"]
     },
      "DepositRequest": {
       "title": "Deposit Request",

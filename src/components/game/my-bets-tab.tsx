@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore'
 import { useFirebase } from '@/firebase'
 import type { Bet } from '@/lib/types'
@@ -18,34 +18,34 @@ export function MyBetsTab({ userId, ...props }: MyBetsTabProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  useEffect(() => {
-    const fetchBets = async () => {
-        if (!firestore || !userId) {
-            setIsLoading(false);
-            return;
-        }
-        setIsLoading(true);
-        setError(null);
-        
-        try {
-            const betsQuery = query(
-                collection(firestore, 'bets'),
-                where('userId', '==', userId),
-                orderBy('createdAt', 'desc')
-            );
-            const querySnapshot = await getDocs(betsQuery);
-            const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
-            setBets(userBets);
-        } catch (err: any) {
-            console.error("Error fetching bets: ", err);
-            setError(err);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  const fetchBets = useCallback(async () => {
+    if (!firestore || !userId) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const betsQuery = query(
+        collection(firestore, 'bets'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      const querySnapshot = await getDocs(betsQuery);
+      const userBets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bet));
+      setBets(userBets);
+    } catch (err: any) {
+      console.error("Error fetching bets: ", err);
+      setError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [firestore, userId]);
 
+  useEffect(() => {
     fetchBets();
-  }, [firestore, userId, props.key]); // Rerun if firestore, userId, or the key changes.
+  }, [fetchBets, props.key]);
 
   const renderTarget = (bet: Bet) => {
     const baseClasses = "px-2 py-1 rounded-md text-xs font-bold text-white"

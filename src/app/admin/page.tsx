@@ -245,7 +245,6 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 await updateDoc(requestRef, { status: newStatus });
                 
                 toast({ title: 'Success', description: `Request has been ${newStatus} and balance updated.` });
-                onUpdate(); // This will trigger a refresh in the parent component
             } catch (err: any) {
                 const isUserUpdateError = err.message.toLowerCase().includes('user');
 
@@ -270,6 +269,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 }
 
             } finally {
+                onUpdate(); // This will trigger a refresh in the parent component
                 setIsProcessing(null);
             }
         } else { // newStatus is 'rejected'
@@ -277,7 +277,6 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 // For rejections, we only need to update the request status.
                 await updateDoc(requestRef, { status: newStatus });
                 toast({ title: 'Success', description: `Request has been ${newStatus}.` });
-                onUpdate();
             } catch (err: any) {
                  const contextualError = new FirestorePermissionError({
                     path: requestRef.path,
@@ -287,6 +286,7 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                 errorEmitter.emit('permission-error', contextualError);
                 toast({ variant: 'destructive', title: 'Error', description: 'Could not reject request. Check permissions.' });
             } finally {
+                onUpdate();
                 setIsProcessing(null);
             }
         }

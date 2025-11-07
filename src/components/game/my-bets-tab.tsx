@@ -27,6 +27,7 @@ export function MyBetsTab({ userId }: MyBetsTabProps) {
       setError(null);
       
       try {
+        // Simplified query: Only filter by userId. Sorting will be done on the client.
         const betsQuery = query(
           collection(firestore, 'bets'),
           where('userId', '==', userId)

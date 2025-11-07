@@ -3,10 +3,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check for admin custom claim
+    // Helper function to check if the requesting user is an admin
+    // It checks a field on the user's own document
     function isAdmin() {
-      // Check if the 'isAdmin' custom claim is present and set to true
-      return request.auth.token.isAdmin == true;
+      // Ensure the user is authenticated before trying to read their document
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
     // Helper function to check if the user is the owner of the document
@@ -16,11 +17,11 @@ service cloud.firestore {
 
     // Users collection rules
     match /users/{userId} {
-      // Admin can list all users for the admin panel
+      // Admin can list all users
       allow list: if isAdmin();
       // A user can get their own document, or an admin can get any document
       allow get: if isOwner(userId) || isAdmin();
-      // Allow user creation (write) for anyone who is creating their own user doc
+      // Allow user creation (write) for anyone creating their own user doc
       allow create: if isOwner(userId);
       // Allow updates only for the owner or an admin
       allow update: if isOwner(userId) || isAdmin();
@@ -40,14 +41,14 @@ service cloud.firestore {
     // Game Rounds: Authenticated users can read game results. Only admin can write them.
     // This prevents players from manipulating game outcomes.
     match /game_rounds/{roundId} {
-      allow list: if request.auth != null;
-      allow get: if request.auth != null;
+      allow list, get: if request.auth != null;
       allow write: if isAdmin();
     }
 
     // Deposits: Users can create/read their own deposit requests. Admin can manage all.
     match /deposits/{depositId} {
-      allow list: if isAdmin() || (resource.data.userId == request.auth.uid);
+      // An Admin can list all deposits. A user can only see their own deposits.
+      allow list: if isAdmin() || (request.query.where.field == "userId" && request.query.where.value == request.auth.uid);
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
       allow create: if request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
@@ -55,7 +56,8 @@ service cloud.firestore {
 
     // Withdrawals: Users can create/read their own withdrawal requests. Admin can manage all.
     match /withdrawals/{withdrawalId} {
-      allow list: if isAdmin() || (resource.data.userId == request.auth.uid);
+      // An Admin can list all withdrawals. A user can only see their own withdrawals.
+      allow list: if isAdmin() || (request.query.where.field == "userId" && request.query.where.value == request.auth.uid);
       allow get: if isAdmin() || (resource.data.userId == request.auth.uid);
       allow create: if request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
@@ -63,8 +65,7 @@ service cloud.firestore {
     
     // Notifications: Can be read by any authenticated user, but only created/managed by an admin.
     match /notifications/{notificationId} {
-        allow list: if request.auth != null;
-        allow get: if request.auth != null;
+        allow list, get: if request.auth != null;
         allow create, update, delete: if isAdmin();
     }
 

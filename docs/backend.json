@@ -58,6 +58,10 @@
         "depositCount": {
             "type": "number",
             "description": "The number of deposits made by the user."
+        },
+        "isAdmin": {
+          "type": "boolean",
+          "description": "Flag to indicate if the user has administrative privileges."
         }
       },
       "required": ["id", "phone", "emailId", "balance", "createdAt", "referralCode", "depositCount"]

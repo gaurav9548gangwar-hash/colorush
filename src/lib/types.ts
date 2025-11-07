@@ -8,6 +8,7 @@ export type User = {
   balance: number;
   createdAt: string;
   password?: string;
+  isAdmin?: boolean;
   
   // "Chakravyuh" logic fields
   initialDeposit: number; 

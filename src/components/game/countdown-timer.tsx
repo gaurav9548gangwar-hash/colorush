@@ -45,7 +45,7 @@ export function CountdownTimer() {
   const formattedTime = `00:${String(displaySeconds).padStart(2, '0')}`
 
   return (
-    <div className="text-center">
+    <div className="text-center bg-green-900/30 p-2 rounded-md">
       <p className="text-sm uppercase tracking-wider text-muted-foreground">
         {phase === 'betting' ? 'Time Remaining' : 'Result Soon'}
       </p>

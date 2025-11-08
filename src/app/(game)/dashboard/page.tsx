@@ -106,8 +106,8 @@ export default function DashboardPage() {
       <Header />
       <main className="flex-1 container mx-auto px-4 py-6 space-y-6">
         <Announcements />
-        <Wallet />
         <ReferralCard />
+        <Wallet />
         <GameArea />
       </main>
     </div>

@@ -78,21 +78,21 @@ function ReferralCard() {
   }
 
   return (
-    <Card>
+    <Card className="bg-yellow-400 text-black font-bold">
       <CardHeader>
-        <CardTitle className="flex items-center"><Gift className="mr-2" /> Refer & Earn</CardTitle>
+        <CardTitle className="flex items-center text-black"><Gift className="mr-2 text-black" /> Refer & Earn</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-black">
           Share your referral link with friends. When they register and make their first deposit, you get a 20 INR bonus!
         </p>
-        <div className="flex items-center justify-between bg-muted p-2 rounded-md">
-            <span className="font-mono text-sm text-center flex-1">{userData.referralCode}</span>
-             <Button variant="ghost" size="icon" onClick={handleCopy}>
+        <div className="flex items-center justify-between bg-yellow-200 p-2 rounded-md">
+            <span className="font-mono text-sm text-center flex-1 text-black">{userData.referralCode}</span>
+             <Button variant="ghost" size="icon" onClick={handleCopy} className="text-black hover:bg-yellow-300">
                 <Copy className="h-4 w-4" />
             </Button>
         </div>
-        <Button className="w-full" onClick={handleCopy}>Copy Link</Button>
+        <Button className="w-full" variant="secondary" onClick={handleCopy}>Copy Link</Button>
       </CardContent>
     </Card>
   )

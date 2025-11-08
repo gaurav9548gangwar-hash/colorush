@@ -138,10 +138,10 @@ export default function LoginPage() {
         </div>
       </CardHeader>
       <CardContent className="pt-6">
-        <Tabs defaultValue="login" className="w-full">
+        <Tabs defaultValue="register" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="register">Register</TabsTrigger>
+            <TabsTrigger value="login">Login</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
             <form onSubmit={handleLogin} className="space-y-6 pt-4">

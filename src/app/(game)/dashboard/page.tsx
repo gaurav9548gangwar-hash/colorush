@@ -32,10 +32,10 @@ function Announcements() {
   }
 
   return (
-    <Alert>
-        <Megaphone className="h-4 w-4" />
+    <Alert className="bg-yellow-400 text-black font-bold">
+        <Megaphone className="h-4 w-4 text-black" />
         <AlertTitle>{latestNotification.title}</AlertTitle>
-        <AlertDescription>
+        <AlertDescription className="text-black">
             {latestNotification.message}
         </AlertDescription>
     </Alert>

@@ -121,7 +121,7 @@ export function GameArea() {
       </CardContent>
       <CardFooter className="flex-col items-center justify-center pt-4 border-t">
         <p className="text-sm text-muted-foreground">
-          Kisi bhi samasya ke liye, aap humse Telegram par sampark kar sakte hain.
+          For any issues, you can contact us on Telegram.
         </p>
         <Button variant="link" asChild className="mt-1">
           <a href="https://t.me/ColoRushSupport" target="_blank" rel="noopener noreferrer">

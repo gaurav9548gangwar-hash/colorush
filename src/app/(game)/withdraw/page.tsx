@@ -17,6 +17,7 @@ import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
 
 const MIN_WITHDRAWAL = 500
+const GST_RATE = 0.18; // 18%
 
 export default function WithdrawPage() {
   const { firestore, user, isUserLoading } = useFirebase()
@@ -35,6 +36,9 @@ export default function WithdrawPage() {
   }, [firestore, user]);
 
   const { data: userData, isLoading: isUserDocLoading } = useDoc<User>(userDocRef)
+
+  const gstAmount = amount * GST_RATE;
+  const finalAmount = amount - gstAmount;
 
   useEffect(() => {
       if (!isUserLoading && !user) {
@@ -141,6 +145,7 @@ export default function WithdrawPage() {
                 <AlertTitle className="font-bold">Withdrawal Rules</AlertTitle>
                 <AlertDescription>
                     <p>Minimum withdrawal amount is <strong>INR {MIN_WITHDRAWAL}</strong>.</p>
+                     <p>An <strong>18% GST</strong> will be deducted on every withdrawal.</p>
                     <p>Your current available balance is <strong>INR {(userData?.balance || 0).toFixed(2)}</strong>.</p>
                 </AlertDescription>
             </Alert>
@@ -167,13 +172,17 @@ export default function WithdrawPage() {
                         required
                     />
                 </div>
+                <div className="text-sm text-muted-foreground p-2 bg-muted rounded-md">
+                    <div className="flex justify-between"><span>GST (18%):</span> <span>- INR {gstAmount.toFixed(2)}</span></div>
+                    <div className="flex justify-between font-bold"><span>Amount you will receive:</span> <span>INR {finalAmount.toFixed(2)}</span></div>
+                </div>
                  <Button type="submit" className="w-full" disabled={isSubmitting || (userData?.balance || 0) < MIN_WITHDRAWAL}>
                     {isSubmitting ? 'Submitting Request...' : 'Submit Request'}
                 </Button>
             </form>
         </CardContent>
         <CardFooter>
-            <p className="text-xs text-muted-foreground text-center w-full">Your request will be processed within 24 hours. The amount will be deducted from your wallet immediately.</p>
+            <p className="text-xs text-muted-foreground text-center w-full">Your request will be processed within 24 hours. The final amount will be credited to your bank after deductions.</p>
         </CardFooter>
       </Card>
     </div>

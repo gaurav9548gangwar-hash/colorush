@@ -1,4 +1,3 @@
-
 'use client'
 
 import { GameEngine } from "@/components/game/game-engine";
@@ -6,7 +5,7 @@ import { useFirebase } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-export default function DashboardLayout({
+export default function GameLayout({
   children,
 }: {
   children: React.ReactNode;

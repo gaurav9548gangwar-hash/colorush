@@ -26,7 +26,7 @@ export function Wallet() {
   const balance = userData?.balance ?? 0
 
   return (
-    <Card>
+    <Card className="bg-green-800/20">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium">My Wallet</CardTitle>
         <WalletIcon className="h-4 w-4 text-muted-foreground" />
@@ -41,13 +41,13 @@ export function Wallet() {
             </div>
         </div>
         <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
-          <Button size="sm" variant="outline" className="flex-1" onClick={() => router.push('/recharge')}>
+          <Button size="sm" variant="blue" className="flex-1" onClick={() => router.push('/recharge')}>
              <Upload className="mr-2 h-4 w-4" /> Recharge
           </Button>
-          <Button size="sm" variant="outline" className="flex-1" onClick={() => router.push('/withdraw')}>
+          <Button size="sm" variant="blue" className="flex-1" onClick={() => router.push('/withdraw')}>
             <Download className="mr-2 h-4 w-4" /> Withdraw
           </Button>
-           <Button size="sm" variant="outline" className="flex-1 col-span-2 md:col-span-1" onClick={() => router.push('/wallet-history')}>
+           <Button size="sm" variant="blue" className="flex-1 col-span-2 md:col-span-1" onClick={() => router.push('/wallet-history')}>
             <History className="mr-2 h-4 w-4" /> Payment History
           </Button>
         </div>

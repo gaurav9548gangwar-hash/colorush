@@ -1,10 +1,10 @@
+
 'use client'
 import { Header } from '@/components/game/header'
 import { Wallet } from '@/components/game/wallet'
 import { GameArea } from '@/components/game/game-area'
 import { useFirebase, useMemoFirebase } from '@/firebase'
-import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { collection, query, orderBy, limit, doc } from 'firebase/firestore'
 import { useCollection } from '@/firebase/firestore/use-collection'
 import type { Notification, User } from '@/lib/types'
@@ -47,7 +47,7 @@ function ReferralCard() {
   const { toast } = useToast()
   const [referralLink, setReferralLink] = useState('')
 
-  const userDocRef = useMemo(() => {
+  const userDocRef = useMemoFirebase(() => {
     if (firestore && user) {
       return doc(firestore, 'users', user.uid)
     }
@@ -101,19 +101,6 @@ function ReferralCard() {
 
 
 export default function DashboardPage() {
-  const { user, isUserLoading } = useFirebase()
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!isUserLoading && !user) {
-      router.replace('/login')
-    }
-  }, [isUserLoading, user, router])
-
-  if (isUserLoading || !user) {
-    return <div className="flex items-center justify-center min-h-screen">Authenticating...</div>
-  }
-
   return (
     <div className="flex flex-col min-h-screen">
       <Header />

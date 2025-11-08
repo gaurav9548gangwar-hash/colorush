@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -7,21 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CountdownTimer } from './countdown-timer'
 import { PlaceBetDialog } from './place-bet-dialog'
 import { useFirebase } from '@/firebase'
-import type { Bet, BetColor, BetSize, GameResult, User } from '@/lib/types'
-import { collection, doc, writeBatch, serverTimestamp, updateDoc, increment, query, where, getDocs, getDoc, type Firestore, setDoc } from 'firebase/firestore'
-import { useToast } from '@/hooks/use-toast'
 import { PastResultsTab } from './past-results-tab'
 import { MyBetsTab } from './my-bets-tab'
-import { errorEmitter } from '@/firebase/error-emitter'
-import { FirestorePermissionError } from '@/firebase/errors'
-
-const getWinningSize = (num: number): BetSize => (num >= 5 ? 'big' : 'small')
-
-const getWinningColor = (num: number): BetColor => {
-  if (num === 0 || num === 5) return 'white'
-  if ([1, 3, 7, 9].includes(num)) return 'green'
-  return 'orange'
-}
+import { useGameStore } from '@/lib/game-store'
 
 const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -30,271 +19,28 @@ const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-
 export function GameArea() {
-  const { firestore, user } = useFirebase()
-  const { toast } = useToast()
+  const { user } = useFirebase()
+  
+  const { 
+    currentRoundId, 
+    isProcessing,
+    gameResult 
+  } = useGameStore();
 
-  const [currentRoundId, setCurrentRoundId] = useState<string>('')
-  const [isBettingLocked, setIsBettingLocked] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [gameResult, setGameResult] = useState<GameResult | null>(null)
-  
-  const handleNewRound = useCallback(() => {
-    setIsProcessing(false)
-    setIsBettingLocked(false)
-    setGameResult(null)
-    const newRoundId = new Date().getTime().toString();
-    setCurrentRoundId(newRoundId)
-  }, [])
-  
+  const [isBettingLocked, setIsBettingLocked] = useState(false);
+
   useEffect(() => {
-    handleNewRound()
-  }, [handleNewRound])
+    const lockTimer = setTimeout(() => {
+        setIsBettingLocked(true);
+    }, 55 * 1000);
 
-  const handleRoundEnd = useCallback(async () => {
-    if (!firestore || !currentRoundId || !user) return;
+    // Reset lock for new round
+    setIsBettingLocked(false);
 
-    setIsBettingLocked(true);
-    setIsProcessing(true);
+    return () => clearTimeout(lockTimer);
+  }, [currentRoundId]);
 
-    let currentUserData: User | null = null;
-    try {
-        const userDocRef = doc(firestore, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-            currentUserData = userDoc.data() as User;
-        }
-    } catch(e) {
-        console.error("Could not fetch user data for round logic: ", e);
-    }
-    
-    const betsQuery = query(
-        collection(firestore, 'bets'), 
-        where('roundId', '==', currentRoundId),
-        where('status', '==', 'pending')
-    );
-
-    let betsToProcess: Bet[] = [];
-    try {
-        const pendingBetsSnapshot = await getDocs(betsQuery);
-        betsToProcess = pendingBetsSnapshot.docs.map(doc => ({...doc.data(), id: doc.id} as Bet));
-    } catch (error) {
-        console.error("Error fetching pending bets: ", error);
-        toast({ variant: "destructive", title: "Round Error", description: "Could not fetch bets to process round." });
-        
-        if (error instanceof Error && (error as any).code === 'permission-denied') {
-             const contextualError = new FirestorePermissionError({
-                path: `bets`,
-                operation: 'list',
-                requestResourceData: { info: "Querying for pending bets in a round failed." },
-            });
-            errorEmitter.emit('permission-error', contextualError);
-        }
-        setIsProcessing(false);
-        return;
-    }
-
-    let winningNumber: number;
-    const userBetsInRound = betsToProcess.filter(bet => bet.userId === user.uid);
-    const userHasBet = userBetsInRound.length > 0;
-    const randomLossStreak = Math.floor(Math.random() * 5) + 5; // 5 to 10
-
-    const getUserWinningNumbers = (): number[] => {
-        const winningNumbers: number[] = [];
-        for (let i = 0; i <= 9; i++) {
-            const isWin = userBetsInRound.some(bet =>
-                (bet.type === 'number' && bet.target === i) ||
-                (bet.type === 'color' && bet.target === getWinningColor(i)) ||
-                (bet.type === 'size' && bet.target === getWinningSize(i))
-            );
-            if (isWin) winningNumbers.push(i);
-        }
-        return winningNumbers;
-    };
-
-    const getUserLosingNumbers = (): number[] => {
-        const winningNumbers = getUserWinningNumbers();
-        const losingNumbers: number[] = [];
-        for (let i = 0; i <= 9; i++) {
-            if (!winningNumbers.includes(i)) {
-                losingNumbers.push(i);
-            }
-        }
-        return losingNumbers;
-    };
-
-    if (currentUserData && userHasBet) {
-        let forceWin = false;
-
-        if (currentUserData.inWinningPhase) {
-            if(currentUserData.balance < currentUserData.targetBalance) {
-                forceWin = Math.random() < 0.8; // 80% chance to win
-            } else {
-                // Target reached, switch to losing phase in the batch write
-                forceWin = false;
-            }
-        } else {
-             // In losing phase, check for intermittent win
-            if (currentUserData.betsSinceLastWin >= randomLossStreak) {
-                forceWin = true; // Give an intermittent win
-            } else {
-                forceWin = false;
-            }
-        }
-        
-        if(forceWin){
-            const winningOptions = getUserWinningNumbers();
-            if (winningOptions.length > 0) {
-                winningNumber = winningOptions[Math.floor(Math.random() * winningOptions.length)];
-            } else {
-                // This case is unlikely if user has bet, but as a fallback, make them lose.
-                const losingOptions = getUserLosingNumbers();
-                winningNumber = losingOptions.length > 0 ? losingOptions[Math.floor(Math.random() * losingOptions.length)] : Math.floor(Math.random() * 10);
-            }
-        } else { // Force Loss
-            const losingOptions = getUserLosingNumbers();
-            if (losingOptions.length > 0) {
-                winningNumber = losingOptions[Math.floor(Math.random() * losingOptions.length)];
-            } else {
-                // User bet on everything. As a fallback, pick a random number.
-                winningNumber = Math.floor(Math.random() * 10);
-            }
-        }
-
-    } else {
-        // Default behavior if no user data or user hasn't bet: minimize house payout
-        const potentialPayouts: { [num: number]: number } = {};
-        for (let i = 0; i <= 9; i++) { potentialPayouts[i] = 0; }
-        
-        betsToProcess.forEach(bet => {
-            for (let i = 0; i <= 9; i++) {
-                const winningColor = getWinningColor(i);
-                const winningSize = getWinningSize(i);
-                let multiplier = 0;
-
-                if (bet.type === 'number' && bet.target === i) multiplier = 9;
-                else if (bet.type === 'color' && bet.target === winningColor) multiplier = 2;
-                else if (bet.type === 'size' && bet.target === winningSize) multiplier = 2;
-                
-                if (multiplier > 0) {
-                    potentialPayouts[i] += bet.amount * multiplier;
-                }
-            }
-        });
-
-        let minPayout = Infinity;
-        let bestNumbers: number[] = [];
-
-        for (let i = 0; i <= 9; i++) {
-            if (potentialPayouts[i] < minPayout) {
-                minPayout = potentialPayouts[i];
-                bestNumbers = [i];
-            } else if (potentialPayouts[i] === minPayout) {
-                bestNumbers.push(i);
-            }
-        }
-        winningNumber = bestNumbers.length > 0 ? bestNumbers[Math.floor(Math.random() * bestNumbers.length)] : Math.floor(Math.random() * 10);
-    }
-    
-    const winningColor = getWinningColor(winningNumber);
-    const winningSize = getWinningSize(winningNumber);
-
-    const resultData: GameResult = {
-        id: currentRoundId,
-        roundId: currentRoundId,
-        winningNumber,
-        winningColor,
-        winningSize,
-        endedAt: new Date(),
-    };
-    
-    setGameResult(resultData);
-
-    try {
-        const batch = writeBatch(firestore);
-        const roundDocRef = doc(firestore, 'game_rounds', currentRoundId);
-        batch.set(roundDocRef, {
-            ...resultData,
-            endedAt: serverTimestamp()
-        });
-  
-        const userPayouts: { [userId: string]: number } = {};
-        const userWinLoss: { [userId: string]: 'win' | 'loss' } = {};
-
-        for (const bet of betsToProcess) {
-            const betDocRef = doc(firestore, 'bets', bet.id);
-            let hasWon = false;
-            let payout = 0;
-            let multiplier = 0;
-    
-            if (bet.type === 'number' && bet.target === resultData.winningNumber) multiplier = 9;
-            else if (bet.type === 'color' && bet.target === resultData.winningColor) multiplier = 2;
-            else if (bet.type === 'size' && bet.target === resultData.winningSize) multiplier = 2;
-
-            if (multiplier > 0) {
-                hasWon = true;
-                payout = bet.amount * multiplier;
-            }
-    
-            batch.update(betDocRef, {
-                status: hasWon ? 'win' : 'loss',
-                payout,
-            });
-    
-            if (hasWon) {
-                userPayouts[bet.userId] = (userPayouts[bet.userId] || 0) + payout;
-                userWinLoss[bet.userId] = 'win';
-            } else if(userWinLoss[bet.userId] !== 'win') {
-                 userWinLoss[bet.userId] = 'loss';
-            }
-        }
-
-        for (const userId in userPayouts) {
-            const payout = userPayouts[userId];
-            if (payout > 0) {
-                const userRef = doc(firestore, "users", userId);
-                batch.update(userRef, { balance: increment(payout) });
-            }
-        }
-        
-        if(currentUserData && user.uid in userWinLoss) {
-            const userRef = doc(firestore, "users", user.uid);
-            let userDataUpdate: any = {};
-
-            if (currentUserData.inWinningPhase && currentUserData.balance + (userPayouts[user.uid] || 0) >= currentUserData.targetBalance) {
-                userDataUpdate.inWinningPhase = false;
-                userDataUpdate.betsSinceLastWin = 0;
-            } else if (!currentUserData.inWinningPhase) {
-                if (userWinLoss[user.uid] === 'win') {
-                    userDataUpdate.betsSinceLastWin = 0;
-                } else {
-                    userDataUpdate.betsSinceLastWin = increment(1);
-                }
-            }
-             if(Object.keys(userDataUpdate).length > 0){
-                batch.update(userRef, userDataUpdate);
-             }
-        }
-        
-        await batch.commit();
-
-    } catch (error) {
-      console.error("Error saving round results to DB: ", error);
-      toast({ variant: "destructive", title: "Save Error", description: "Could not save round results." });
-      
-       if (error instanceof Error && (error as any).code === 'permission-denied') {
-            const contextualError = new FirestorePermissionError({
-                path: `bets or game_rounds`,
-                operation: 'write',
-                requestResourceData: { info: "Batch write for round end processing failed." },
-            });
-            errorEmitter.emit('permission-error', contextualError);
-        }
-    } finally {
-        setIsProcessing(false);
-    }
-  }, [firestore, currentRoundId, toast, user]);
 
   const renderResult = () => {
     if (!gameResult) {
@@ -333,12 +79,7 @@ export function GameArea() {
             <p className="text-sm text-muted-foreground">Round ID</p>
             <p className="text-lg font-semibold">{currentRoundId.substring(9, 13)}</p>
           </div>
-          <CountdownTimer 
-            key={currentRoundId} 
-            roundId={currentRoundId}
-            onRoundEnd={handleRoundEnd}
-            onNewRound={handleNewRound}
-          />
+          <CountdownTimer />
           <div className="flex items-center justify-center">
              <Button variant="outline" onClick={() => window.location.reload()}>Refresh Game</Button>
           </div>

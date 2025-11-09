@@ -131,73 +131,75 @@ function LoginFlow() {
   }
 
   return (
-    <Card className="w-full max-w-md shadow-2xl">
-       <CardHeader className="p-0 overflow-hidden">
-        <div className="bg-gradient-to-r from-orange-500 via-white-500 to-green-500 p-8 text-center">
-            <CardTitle className="text-4xl font-extrabold text-primary-foreground drop-shadow-lg">ColoRush</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-6">
-        <Tabs defaultValue="register" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="register">Register</TabsTrigger>
-            <TabsTrigger value="login">Login</TabsTrigger>
-          </TabsList>
-           <TabsContent value="register">
-            <form onSubmit={handleRegister} className="space-y-6 pt-4">
-                <div className="relative">
-                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="name" type="text" placeholder="Your Name" value={name} onChange={(e) => setName(e.target.value)} required className="pl-10"/>
-                </div>
+    <>
+      <Card className="w-full max-w-md shadow-2xl">
+        <CardHeader className="p-0 overflow-hidden">
+          <div className="bg-gradient-to-r from-orange-500 via-white-500 to-green-500 p-8 text-center">
+              <CardTitle className="text-4xl font-extrabold text-primary-foreground drop-shadow-lg">ColoRush</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <Tabs defaultValue="register" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="register">Register</TabsTrigger>
+              <TabsTrigger value="login">Login</TabsTrigger>
+            </TabsList>
+            <TabsContent value="register">
+              <form onSubmit={handleRegister} className="space-y-6 pt-4">
+                  <div className="relative">
+                      <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                      <Input id="name" type="text" placeholder="Your Name" value={name} onChange={(e) => setName(e.target.value)} required className="pl-10"/>
+                  </div>
+                  <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                      <Input id="phone" type="tel" placeholder="10-digit Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} required title="Phone number must be 10 digits" className="pl-10"/>
+                  </div>
+                  <div className="relative">
+                      <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                      <Input id="password" type="password" placeholder="Create Password (min. 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="pl-10"/>
+                  </div>
+                  <div className="relative">
+                      <Gift className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                      <Input id="referral" type="text" placeholder="Referral Code (Optional)" value={referralCode} onChange={(e) => setReferralCode(e.target.value)} className="pl-10"/>
+                  </div>
+                  <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
+                      {isSubmitting ? "Creating Account..." : "Create Account"}
+                  </Button>
+              </form>
+            </TabsContent>
+            <TabsContent value="login">
+              <form onSubmit={handleLogin} className="space-y-6 pt-4">
                 <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="phone" type="tel" placeholder="10-digit Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} required title="Phone number must be 10 digits" className="pl-10"/>
+                    <Input id="login-phone" type="tel" placeholder="10-digit Phone Number" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} required className="pl-10" />
                 </div>
                 <div className="relative">
                     <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="password" type="password" placeholder="Create Password (min. 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="pl-10"/>
-                </div>
-                <div className="relative">
-                    <Gift className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="referral" type="text" placeholder="Referral Code (Optional)" value={referralCode} onChange={(e) => setReferralCode(e.target.value)} className="pl-10"/>
+                    <Input
+                    id="login-password"
+                    type="password"
+                    placeholder="Password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                    className="pl-10"
+                    />
                 </div>
                 <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
-                    {isSubmitting ? "Creating Account..." : "Create Account"}
+                    {isSubmitting ? "Logging In..." : "Login"}
                 </Button>
-            </form>
-          </TabsContent>
-          <TabsContent value="login">
-            <form onSubmit={handleLogin} className="space-y-6 pt-4">
-              <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input id="login-phone" type="tel" placeholder="10-digit Phone Number" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} required className="pl-10" />
-              </div>
-              <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                  id="login-password"
-                  type="password"
-                  placeholder="Password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  required
-                  className="pl-10"
-                  />
-              </div>
-              <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
-                  {isSubmitting ? "Logging In..." : "Login"}
-              </Button>
-            </form>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-       <CardFooter className="flex flex-col text-xs text-center pt-4">
-        <p className="text-muted-foreground">By continuing, you agree to our Terms of Service & Privacy Policy.</p>
-        <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-2">
-            Admin Login
-        </Button>
-      </CardFooter>
-    </Card>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+        <CardFooter className="flex flex-col text-xs text-center pt-4">
+          <p className="text-muted-foreground">By continuing, you agree to our Terms of Service & Privacy Policy.</p>
+        </CardFooter>
+      </Card>
+      <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-4">
+          Admin Login
+      </Button>
+    </>
   )
 }
 

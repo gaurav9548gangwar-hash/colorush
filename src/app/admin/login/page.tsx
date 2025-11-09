@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { useFirebase } from '@/firebase'
-import { doc, getDoc, updateDoc } from 'firebase/firestore'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 
+const ADMIN_EMAIL = 'admin@colorush.in'
 const ADMIN_PASSWORD = 'gaurav@9548'
 
 export default function AdminLoginPage() {
@@ -17,57 +18,40 @@ export default function AdminLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
-  const { user, isUserLoading, firestore } = useFirebase()
+  const { auth } = useFirebase()
 
   useEffect(() => {
-    if (isUserLoading) return; // Wait until user status is determined
-
-    // If user is not logged in at all, redirect to main login
-    if (!user) {
-        toast({ variant: 'destructive', title: 'Login Required', description: 'Please log in as a user first to access the admin area.' });
-        router.replace('/login');
-        return;
-    }
-
-    // If already an admin (session is set), go to admin dashboard
+    // On mount, check if admin is already logged in via session storage
     if (sessionStorage.getItem('isAdminLoggedIn') === 'true') {
         router.replace('/admin');
-        return;
     }
-    
-  }, [user, isUserLoading, router, toast]);
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     
     if (password === ADMIN_PASSWORD) {
-        // User must be logged in to proceed
-        if (user && firestore) {
+        if (auth) {
           try {
-            const userRef = doc(firestore, 'users', user.uid);
-            // Check if user is already an admin in firestore
-            const userDoc = await getDoc(userRef);
-            if (!userDoc.exists() || !userDoc.data()?.isAdmin) {
-                // If not an admin, grant admin rights
-                await updateDoc(userRef, { isAdmin: true });
-                toast({ title: 'Admin Status Granted!', description: 'Your account now has admin privileges. Redirecting...' });
-            } else {
-                 toast({ title: 'Admin Access Confirmed', description: 'Redirecting to admin panel...' });
-            }
-
+            // We sign in with a dedicated admin email to manage the session
+            await signInWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD);
             sessionStorage.setItem('isAdminLoggedIn', 'true');
+            toast({ title: 'Admin Login Successful', description: 'Redirecting to admin panel...' });
             router.push('/admin');
 
-          } catch (error) {
-            console.error("Error granting admin status: ", error);
-            toast({ variant: 'destructive', title: 'Admin Grant Failed', description: 'Could not set admin status in Firestore. Check console.' });
+          } catch (error: any) {
+            // If admin user doesn't exist, this will fail. For this app, we assume it does or can be created.
+             if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                 toast({ variant: 'destructive', title: 'Admin Login Failed', description: 'Admin user not found or wrong credentials. Please check Firebase Auth.' });
+            } else {
+                console.error("Admin sign-in error: ", error);
+                toast({ variant: 'destructive', title: 'Admin Login Failed', description: 'An unexpected error occurred. Check console.' });
+            }
             setIsSubmitting(false);
           }
         } else {
-            // This case should ideally not be reached due to the useEffect check
-            toast({ variant: 'destructive', title: 'User Not Logged In', description: 'Something went wrong. Please log in again.' });
-            router.push('/login');
+            toast({ variant: 'destructive', title: 'Auth Not Ready', description: 'Firebase Auth is not available. Please try again.' });
             setIsSubmitting(false);
         }
     } else {
@@ -80,26 +64,17 @@ export default function AdminLoginPage() {
     }
   }
 
-  // Show a loading state while checking user auth
-  if (isUserLoading || !user) {
-    return (
-        <div className="flex items-center justify-center min-h-screen w-full">
-            <p>Loading user data...</p>
-        </div>
-    )
-  }
-
   return (
     <div className="flex items-center justify-center min-h-screen w-full">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-primary">Admin Panel Lock</CardTitle>
-          <CardDescription>Enter the password to grant admin rights to your current user and unlock.</CardDescription>
+          <CardTitle className="text-2xl font-bold text-primary">Admin Panel Login</CardTitle>
+          <CardDescription>Enter the password to access the admin panel.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Admin Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -110,7 +85,7 @@ export default function AdminLoginPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Unlocking...' : 'Unlock & Grant Admin'}
+              {isSubmitting ? 'Logging In...' : 'Login to Admin Panel'}
             </Button>
           </form>
         </CardContent>

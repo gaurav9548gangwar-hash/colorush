@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ import { doc, setDoc, getDocs, query, where, collection } from "firebase/firesto
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { KeyRound, Phone, User as UserIcon, Gift } from "lucide-react"
 
-export default function LoginPage() {
+function LoginFlow() {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
@@ -143,6 +143,29 @@ export default function LoginPage() {
             <TabsTrigger value="register">Register</TabsTrigger>
             <TabsTrigger value="login">Login</TabsTrigger>
           </TabsList>
+           <TabsContent value="register">
+            <form onSubmit={handleRegister} className="space-y-6 pt-4">
+                <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="name" type="text" placeholder="Your Name" value={name} onChange={(e) => setName(e.target.value)} required className="pl-10"/>
+                </div>
+                <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="phone" type="tel" placeholder="10-digit Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} required title="Phone number must be 10 digits" className="pl-10"/>
+                </div>
+                <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="password" type="password" placeholder="Create Password (min. 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="pl-10"/>
+                </div>
+                <div className="relative">
+                    <Gift className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input id="referral" type="text" placeholder="Referral Code (Optional)" value={referralCode} onChange={(e) => setReferralCode(e.target.value)} className="pl-10"/>
+                </div>
+                <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
+                    {isSubmitting ? "Creating Account..." : "Create Account"}
+                </Button>
+            </form>
+          </TabsContent>
           <TabsContent value="login">
             <form onSubmit={handleLogin} className="space-y-6 pt-4">
               <div className="relative">
@@ -166,37 +189,23 @@ export default function LoginPage() {
               </Button>
             </form>
           </TabsContent>
-          <TabsContent value="register">
-            <form onSubmit={handleRegister} className="space-y-6 pt-4">
-                <div className="relative">
-                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="name" type="text" placeholder="Your Name" value={name} onChange={(e) => setName(e.target.value)} required className="pl-10"/>
-                </div>
-                <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="phone" type="tel" placeholder="10-digit Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} required title="Phone number must be 10 digits" className="pl-10"/>
-                </div>
-                <div className="relative">
-                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="password" type="password" placeholder="Create Password (min. 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="pl-10"/>
-                </div>
-                <div className="relative">
-                    <Gift className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input id="referral" type="text" placeholder="Referral Code (Optional)" value={referralCode} onChange={(e) => setReferralCode(e.target.value)} className="pl-10"/>
-                </div>
-                <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
-                    {isSubmitting ? "Creating Account..." : "Create Account"}
-                </Button>
-            </form>
-          </TabsContent>
         </Tabs>
       </CardContent>
        <CardFooter className="flex flex-col text-xs text-center pt-4">
-        <p className="text-muted-foreground">By continuing, you agree to our Terms of Service & Privacy Policy.</p>
+        <p className="text-muted-foreground">By continuing, you agree to our Terms of Service &amp; Privacy Policy.</p>
         <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-2">
             Admin Login
         </Button>
       </CardFooter>
     </Card>
+  )
+}
+
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoginFlow />
+    </Suspense>
   )
 }

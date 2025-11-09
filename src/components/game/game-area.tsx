@@ -124,9 +124,9 @@ export function GameArea() {
           For any issues, you can contact us on Telegram.
         </p>
         <Button variant="link" asChild className="mt-1">
-          <a href="https://t.me/ColoRushSupport" target="_blank" rel="noopener noreferrer">
+          <a href="https://t.me/Tirangaavingo" target="_blank" rel="noopener noreferrer">
             <TelegramIcon className="mr-2 h-4 w-4" />
-            @ColoRushSupport
+            @Tirangaavingo
           </a>
         </Button>
       </CardFooter>

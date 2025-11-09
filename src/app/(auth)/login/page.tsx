@@ -131,7 +131,6 @@ function LoginFlow() {
   }
 
   return (
-    <>
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="p-0 overflow-hidden">
           <div className="bg-gradient-to-r from-orange-500 via-white-500 to-green-500 p-8 text-center">
@@ -194,12 +193,11 @@ function LoginFlow() {
         </CardContent>
         <CardFooter className="flex flex-col text-xs text-center pt-4">
           <p className="text-muted-foreground">By continuing, you agree to our Terms of Service & Privacy Policy.</p>
+           <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-4">
+              Admin Login
+          </Button>
         </CardFooter>
       </Card>
-      <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-4">
-          Admin Login
-      </Button>
-    </>
   )
 }
 

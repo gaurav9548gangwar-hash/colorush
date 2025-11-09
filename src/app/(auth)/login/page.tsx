@@ -192,7 +192,7 @@ function LoginFlow() {
         </Tabs>
       </CardContent>
        <CardFooter className="flex flex-col text-xs text-center pt-4">
-        <p className="text-muted-foreground">By continuing, you agree to our Terms of Service &amp; Privacy Policy.</p>
+        <p className="text-muted-foreground">By continuing, you agree to our Terms of Service & Privacy Policy.</p>
         <Button variant="link" size="sm" onClick={() => router.push('/admin/login')} className="mt-2">
             Admin Login
         </Button>

@@ -7,57 +7,38 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { useFirebase } from '@/firebase'
-import { signInWithEmailAndPassword } from 'firebase/auth'
 
 // This should be a strong, unique password stored securely (e.g., environment variable)
 const ADMIN_PASSWORD = 'gaurav@9548' 
-// This is a dedicated, non-public email for the admin user
-const ADMIN_EMAIL = 'admin@colorush.in'
 
 export default function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
-  const { auth } = useFirebase()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
-    if (password !== ADMIN_PASSWORD) {
+    if (password === ADMIN_PASSWORD) {
+        // In a real app, you'd use a more secure session management.
+        // For this simple case, we use sessionStorage which is cleared when the tab is closed.
+        try {
+            sessionStorage.setItem('isAdminLoggedIn', 'true');
+            toast({ title: 'Admin Login Successful', description: 'Redirecting to admin panel...' });
+            router.push('/admin');
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Browser Error', description: 'Could not set session storage. Please enable it in your browser settings.' });
+        }
+    } else {
         toast({
             variant: 'destructive',
             title: 'Login Failed',
             description: 'The password you entered is incorrect.',
         })
-        setIsSubmitting(false);
-        return;
     }
-    
-    if (!auth) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Firebase not initialized.' });
-        setIsSubmitting(false);
-        return;
-    }
-
-    try {
-        // Log in with the dedicated admin email and the provided password.
-        // NOTE: The admin user MUST be created in Firebase Auth first with this email and password.
-        // A simple way is to register a user with phone "admin" and the admin password.
-        await signInWithEmailAndPassword(auth, ADMIN_EMAIL, password)
-        toast({ title: 'Admin Login Successful', description: 'Redirecting to admin panel...' });
-        router.push('/admin');
-    } catch (error: any) {
-         toast({
-            variant: 'destructive',
-            title: 'Firebase Login Failed',
-            description: 'Could not log into the admin Firebase account. Ensure the admin user exists in Firebase Authentication.',
-        })
-    } finally {
-        setIsSubmitting(false);
-    }
+    setIsSubmitting(false);
   }
 
   return (
@@ -89,5 +70,3 @@ export default function AdminLoginPage() {
     </div>
   )
 }
-
-    

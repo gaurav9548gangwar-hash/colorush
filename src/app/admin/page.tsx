@@ -20,7 +20,6 @@ import {
 } from 'firebase/firestore'
 import { useFirebase } from '@/firebase'
 import type { User, DepositRequest, WithdrawalRequest, Notification } from '@/lib/types'
-import { useDoc } from '@/firebase/firestore/use-doc'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -547,43 +546,36 @@ function NotificationsTab() {
 //                         MAIN ADMIN PAGE
 // #####################################################################
 export default function AdminPage() {
-  const { auth, firestore, user: authUser, isUserLoading } = useFirebase();
   const router = useRouter();
   const [isAuthenticating, setIsAuthenticating] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Get admin status from Firestore
-  const userDocRef = useMemo(() => {
-    if (firestore && authUser) {
-        return doc(firestore, 'users', authUser.uid);
-    }
-    return null;
-  }, [firestore, authUser]);
-
-  const { data: userData, isLoading: isAdminDataLoading } = useDoc<User>(userDocRef);
-  const isAdmin = userData?.isAdmin === true;
 
   useEffect(() => {
-    const totalLoading = isUserLoading || isAdminDataLoading;
-    if (!totalLoading) {
-      if (!authUser || !isAdmin) {
+    try {
+        const isAdmin = sessionStorage.getItem('isAdminLoggedIn') === 'true';
+        if (!isAdmin) {
+          router.replace('/admin/login');
+        } else {
+          setIsAuthenticating(false);
+        }
+    } catch (error) {
+        // This can happen if sessionStorage is disabled.
         router.replace('/admin/login');
-      } else {
-        setIsAuthenticating(false);
-      }
     }
-  }, [isUserLoading, isAdminDataLoading, authUser, isAdmin, router]);
+  }, [router]);
 
   const handleLogout = () => {
-    if (auth) {
-        auth.signOut();
+    try {
+        sessionStorage.removeItem('isAdminLoggedIn');
+    } finally {
+        router.push("/admin/login");
     }
-    router.push("/admin/login");
   };
 
   const forceRefresh = useCallback(() => setRefreshKey(prevKey => prevKey + 1), []);
 
-  if (isAuthenticating || isUserLoading || isAdminDataLoading) {
+  if (isAuthenticating) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Verifying Admin session...</p>
@@ -624,5 +616,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    

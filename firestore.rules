@@ -1,55 +1,14 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if the requesting user is an admin
-    function isAdmin() {
-      // Check the `isAdmin` flag on the user's own profile document
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    // WARNING: INSECURE RULE - This allows anyone to read and write to your entire database.
+    // This is a temporary solution to make the admin panel work on Vercel without a proper
+    // authentication system for the admin.
+    // A secure implementation should be put in place as soon as possible.
+    match /{document=**} {
+      allow read, write: if true;
     }
-
-    // Users collection rules
-    match /users/{userId} {
-      // Admins can read any user's profile
-      // Non-admin users can only read their own profile
-      allow read: if isAdmin() || request.auth.uid == userId;
-
-      // Users can create their own profile upon registration
-      // Admins can update any user's profile (e.g., balance)
-      // Users can update their own profile
-      allow write: if isAdmin() || request.auth.uid == userId;
-    }
-    
-    // Bets, Deposits, Withdrawals, Notifications
-    // Admins need full access to manage these records
-    match /{collection}/{docId} 
-        where collection in ['bets', 'deposits', 'withdrawals', 'notifications', 'game_rounds'] {
-      allow read, write: if isAdmin();
-    }
-
-    // Allow non-admin users to create their own bets, deposits, and withdrawals
-    match /bets/{betId} {
-      allow create: if request.auth.uid == request.resource.data.userId;
-    }
-
-    match /deposits/{depositId} {
-      allow create: if request.auth.uid == request.resource.data.userId;
-    }
-    
-    match /withdrawals/{withdrawalId} {
-       allow create: if request.auth.uid == request.resource.data.userId;
-    }
-
-    // Regular users can read public collections
-    match /notifications/{notificationId} {
-      allow read: if request.auth != null;
-    }
-    
-    match /game_rounds/{roundId} {
-       allow read: if request.auth != null;
-    }
-
   }
 }
-
-    

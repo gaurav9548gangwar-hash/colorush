@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore'
 import { useFirebase } from '@/firebase'
 import type { User, DepositRequest, WithdrawalRequest, Notification } from '@/lib/types'
-
+import { useDoc } from '@/firebase/firestore/use-doc'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -126,10 +126,11 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
         } catch (error: any) {
             console.error("Error fetching users: ", error);
             setUsersError(error);
+            toast({ variant: 'destructive', title: 'Error Loading Users', description: 'Could not fetch user data. Check Firestore Security Rules.' });
         } finally {
             setIsLoadingUsers(false);
         }
-    }, [firestore]);
+    }, [firestore, toast]);
 
     useEffect(() => {
         fetchUsers();
@@ -172,7 +173,7 @@ function UsersTab({ onUpdate, keyForRefresh }: { onUpdate: () => void, keyForRef
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
                 {isLoadingUsers && <p className="text-center py-4">Loading users...</p>}
-                {usersError && <p className="text-destructive text-center py-4">Error loading users. Check console for details.</p>}
+                {usersError && <p className="text-destructive text-center py-4">Error loading users. Check console and security rules.</p>}
                 {!isLoadingUsers && !usersError && (
                     <Table>
                         <TableHeader>
@@ -546,30 +547,43 @@ function NotificationsTab() {
 //                         MAIN ADMIN PAGE
 // #####################################################################
 export default function AdminPage() {
+  const { auth, firestore, user: authUser, isUserLoading } = useFirebase();
   const router = useRouter();
   const [isAuthenticating, setIsAuthenticating] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Get admin status from Firestore
+  const userDocRef = useMemo(() => {
+    if (firestore && authUser) {
+        return doc(firestore, 'users', authUser.uid);
+    }
+    return null;
+  }, [firestore, authUser]);
+
+  const { data: userData, isLoading: isAdminDataLoading } = useDoc<User>(userDocRef);
+  const isAdmin = userData?.isAdmin === true;
+
   useEffect(() => {
-    // Check if running on the client side before accessing sessionStorage
-    if (typeof window !== 'undefined') {
-      const isAdminLoggedIn = sessionStorage.getItem('isAdminLoggedIn') === 'true';
-      if (!isAdminLoggedIn) {
+    const totalLoading = isUserLoading || isAdminDataLoading;
+    if (!totalLoading) {
+      if (!authUser || !isAdmin) {
         router.replace('/admin/login');
       } else {
         setIsAuthenticating(false);
       }
     }
-  }, [router]);
+  }, [isUserLoading, isAdminDataLoading, authUser, isAdmin, router]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('isAdminLoggedIn');
+    if (auth) {
+        auth.signOut();
+    }
     router.push("/admin/login");
   };
 
   const forceRefresh = useCallback(() => setRefreshKey(prevKey => prevKey + 1), []);
 
-  if (isAuthenticating) {
+  if (isAuthenticating || isUserLoading || isAdminDataLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Verifying Admin session...</p>
@@ -610,3 +624,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    

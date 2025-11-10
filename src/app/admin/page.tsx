@@ -271,24 +271,14 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                  const userDoc = await getDoc(userRef);
                  if (!userDoc.exists()) throw new Error("User document not found.");
                  const userData = userDoc.data() as User;
-                 const newBalance = (userData.balance || 0) + request.amount;
-
+                 
                  let userUpdateData: any = { 
                     balance: increment(request.amount),
                     depositCount: increment(1)
                  };
-                 
-                 if (!userData.inWinningPhase) {
-                    userUpdateData.inWinningPhase = true;
-                    userUpdateData.initialDeposit = request.amount;
-                    userUpdateData.targetBalance = newBalance * 2;
-                    userUpdateData.betsSinceLastWin = 0;
-                 } else if (userData.initialDeposit === 0) {
-                    userUpdateData.initialDeposit = request.amount;
-                    userUpdateData.targetBalance = newBalance * 2;
-                 }
 
-                if (userData.depositCount === 0 && userData.referredBy) {
+                 // Award referral bonus on first deposit
+                 if (userData.depositCount === 0 && userData.referredBy) {
                     const referrerRef = doc(firestore, 'users', userData.referredBy);
                     const referrerDoc = await getDoc(referrerRef);
                     if (referrerDoc.exists()) {
@@ -296,6 +286,19 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                          toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
                     }
                 }
+                 
+                 // Chakravyuh Logic
+                 if (!userData.inWinningPhase) {
+                    const newBalance = (userData.balance || 0) + request.amount;
+                    userUpdateData.inWinningPhase = true;
+                    userUpdateData.initialDeposit = request.amount;
+                    userUpdateData.targetBalance = newBalance * 2;
+                    userUpdateData.betsSinceLastWin = 0;
+                 } else if (userData.initialDeposit === 0) {
+                    const newBalance = (userData.balance || 0) + request.amount;
+                    userUpdateData.initialDeposit = request.amount;
+                    userUpdateData.targetBalance = newBalance * 2;
+                 }
 
                 await updateDoc(userRef, userUpdateData);
                 await updateDoc(requestRef, { status: newStatus });

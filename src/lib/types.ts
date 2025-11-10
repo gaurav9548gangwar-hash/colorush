@@ -20,6 +20,7 @@ export type User = {
   referralCode: string;
   referredBy: string;
   depositCount: number; // to track if it's the first deposit
+  referralBonus: number; // to track total referral earnings
 };
 
 export type BetColor = "green" | "white" | "orange";

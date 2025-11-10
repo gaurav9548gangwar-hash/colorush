@@ -62,9 +62,13 @@
         "isAdmin": {
           "type": "boolean",
           "description": "Flag to indicate if the user has administrative privileges."
+        },
+        "referralBonus": {
+          "type": "number",
+          "description": "Total bonus earned from referrals."
         }
       },
-      "required": ["id", "phone", "emailId", "balance", "createdAt", "referralCode", "depositCount"]
+      "required": ["id", "phone", "emailId", "balance", "createdAt", "referralCode", "depositCount", "referralBonus"]
     },
      "DepositRequest": {
       "title": "Deposit Request",

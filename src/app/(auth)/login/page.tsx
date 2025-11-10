@@ -93,6 +93,7 @@ function LoginFlow() {
         referralCode: ownReferralCode,
         referredBy: referredBy || '',
         depositCount: 0,
+        referralBonus: 0,
         // SPECIAL CHECK: Make the first user with this specific phone number an admin
         isAdmin: phone === "9999999999",
       };
@@ -211,5 +212,3 @@ export default function LoginPage() {
     </Suspense>
   )
 }
-
-    

@@ -282,7 +282,10 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                     const referrerRef = doc(firestore, 'users', userData.referredBy);
                     const referrerDoc = await getDoc(referrerRef);
                     if (referrerDoc.exists()) {
-                         await updateDoc(referrerRef, { balance: increment(20) });
+                         await updateDoc(referrerRef, { 
+                             balance: increment(20),
+                             referralBonus: increment(20) 
+                         });
                          toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
                     }
                 }

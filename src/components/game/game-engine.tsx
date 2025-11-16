@@ -151,7 +151,7 @@ export function GameEngine() {
                 const winningSize = getWinningSize(i);
                 let multiplier = 0;
 
-                if (bet.type === 'number' && bet.target === i) multiplier = 9;
+                if (bet.type === 'number' && bet.target === i) multiplier = 2; // Changed from 9 to 2
                 else if (bet.type === 'color' && bet.target === winningColor) multiplier = 2;
                 else if (bet.type === 'size' && bet.target === winningSize) multiplier = 2;
                 
@@ -206,7 +206,7 @@ export function GameEngine() {
             let payout = 0;
             let multiplier = 0;
     
-            if (bet.type === 'number' && bet.target === resultData.winningNumber) multiplier = 9;
+            if (bet.type === 'number' && bet.target === resultData.winningNumber) multiplier = 2; // Changed from 9 to 2
             else if (bet.type === 'color' && bet.target === resultData.winningColor) multiplier = 2;
             else if (bet.type === 'size' && bet.target === resultData.winningSize) multiplier = 2;
 

@@ -132,8 +132,13 @@ export function PlaceBetDialog({ type, target, roundId, disabled }: PlaceBetDial
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={getButtonVariant()} disabled={disabled} className="w-full h-12 text-lg font-bold">
-          {type === 'number' ? `${target}x` : String(target)}
+        <Button 
+          variant={getButtonVariant()} 
+          size={type === 'number' ? 'circle' : 'default'}
+          disabled={disabled} 
+          className="w-full h-12 text-lg font-bold"
+        >
+          {String(target)}
         </Button>
       </DialogTrigger>
       <DialogContent>

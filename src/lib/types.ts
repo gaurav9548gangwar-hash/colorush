@@ -10,12 +10,6 @@ export type User = {
   password?: string;
   isAdmin?: boolean;
   
-  // "Chakravyuh" logic fields
-  initialDeposit: number; 
-  targetBalance: number; 
-  inWinningPhase: boolean; 
-  betsSinceLastWin: number; 
-
   // Referral System fields
   referralCode: string;
   referredBy: string;

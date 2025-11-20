@@ -289,19 +289,6 @@ function DepositRequestsTab({ keyForRefresh, onUpdate }: { keyForRefresh: number
                          toast({ title: 'Referral Bonus!', description: `20 INR bonus awarded to ${referrerDoc.data().name}.` });
                     }
                 }
-                 
-                 // Chakravyuh Logic
-                 if (!userData.inWinningPhase) {
-                    const newBalance = (userData.balance || 0) + request.amount;
-                    userUpdateData.inWinningPhase = true;
-                    userUpdateData.initialDeposit = request.amount;
-                    userUpdateData.targetBalance = newBalance * 2;
-                    userUpdateData.betsSinceLastWin = 0;
-                 } else if (userData.initialDeposit === 0) {
-                    const newBalance = (userData.balance || 0) + request.amount;
-                    userUpdateData.initialDeposit = request.amount;
-                    userUpdateData.targetBalance = newBalance * 2;
-                 }
 
                 await updateDoc(userRef, userUpdateData);
                 await updateDoc(requestRef, { status: newStatus });
